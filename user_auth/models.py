@@ -171,7 +171,7 @@ class Item(models.Model):
     item_cost = models.DecimalField(max_digits=10, decimal_places=2)
     item_alert = models.IntegerField(null=True, blank=True)
     
-    material = models.ForeignKey(Material,on_delete=models.CASCADE,null=True, blank=True)
+    material = models.ForeignKey(MaterialData,on_delete=models.CASCADE,null=True, blank=True)
     gst = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     tax = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     print_type = models.ForeignKey(PrintType,on_delete=models.CASCADE, null=True, blank=True)
@@ -180,7 +180,7 @@ class Item(models.Model):
     is_sleeve = models.CharField(max_length=20, choices=SLEEVE_CHOICES, null=True,blank=True)
 
     item_description = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(null=True,blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
