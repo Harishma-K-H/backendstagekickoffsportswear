@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission,PermissionsMixin
 from django.db import models
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password,check_password
 import string
 import os
 import random
@@ -86,15 +86,25 @@ class User(AbstractUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
     # it is command when create the super user
-    def save(self, *args, **kwargs):
-        """ Ensure password is always hashed before saving """
-        if self.pk:  # If updating an existing user
-            existing_user = User.objects.filter(pk=self.pk).first()
-            if existing_user and existing_user.password != self.password:
-                self.password = make_password(self.password)  # Hash new password
-        else:
-            self.password = make_password(self.password)  # Hash password for new users
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     """ Ensure password is always hashed before saving """
+    #     if self.pk:  # If updating an existing user
+    #         existing_user = User.objects.filter(pk=self.pk).first()
+    #         if existing_user and existing_user.password != self.password:
+    #             self.password = make_password(self.password)  # Hash new password
+    #     else:
+    #         self.password = make_password(self.password)  # Hash password for new users
+    #     super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     """ Ensure password is hashed only if it is not already hashed """
+    #     if self.pk:  # If updating an existing user
+    #         existing_user = User.objects.filter(pk=self.pk).first()
+    #         if existing_user and not check_password(self.password, existing_user.password):
+    #             self.password = make_password(self.password)  # Hash new password
+    #     else:  # New user case
+    #         self.password = make_password(self.password)  # Hash password for new users
+
+    #     super().save(*args, **kwargs)
     def get_full_name(self):
         """
         Returns the full name by concatenating first name, middle name (if exists), and last name.

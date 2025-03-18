@@ -3,11 +3,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
-from .models import Orderdata, OrderItem,OrderPayment
+from .models import Orderdata, OrderItem,OrderPayment,Invoice
 from .serializers import OrderSerializer
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Max 
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from user_auth.models import Item,Branch,User,Customer,MaterialData,PrintType,Material
 import random
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.models import AnonymousUser
 from django.utils.timezone import now 
 from django.shortcuts import get_object_or_404
 from datetime import datetime
@@ -15,9 +21,140 @@ from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
+
+class InvoiceList(APIView):
+    def post(self, request, *args, **kwargs):
+        print("📌 Request Data:", request.data)
+        try:
+            # Extract order details
+            inovice_no=request.data.get('invoice_id')
+            order_id = request.data.get('orderID')
+            # customer_id = request.data.get('customer')
+            delivery_date = request.data.get('delivery_date')
+            net_cost=request.data.get('net_cost')
+            # Fetch GST percentage from settings (default 5%)
+            GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
+            if net_cost:
+                net_cost_decimal = Decimal(net_cost)  # Convert to Decimal
+                gst_value = (Decimal(GST_PERCENTAGE) / 100) * net_cost_decimal
+                total_cost = net_cost_decimal + gst_value
+            
+            # Convert delivery_date to correct format
+            try:
+                delivery_date = datetime.strptime(delivery_date, "%d-%m-%Y").date()
+            except ValueError:
+                return Response({"error": "Invalid date format. Use YYYY-MM-DD or DD-MM-YYYY."}, status=400)
+
+            # Validate required fields
+            if not all([order_id, customer_id, delivery_date]):
+                return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get customer object
+            customer = get_object_or_404(Customer, id=customer_id)
+
+            # Ensure order is only created if at least one item matches
+            with transaction.atomic():
+                items_created = []
+                index = 0
+                valid_item_found = False  # Flag to check if at least one item is created
+
+                while f'items[{index}][name]' in request.data:
+                    try:
+                        item_name = request.data.get(f'items[{index}][name]')
+                        material_id = request.data.get(f'items[{index}][material]')
+                        print_type_id = request.data.get(f'items[{index}][print_type]')
+                        sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
+                        size = request.data.get(f'items[{index}][size]')
+                        qty = request.data.get(f'items[{index}][qty]')
+
+                        print(f"🔍 Processing item[{index}] - Name: {item_name}, Material: {material_id}, Print Type: {print_type_id}, Sleeve: {sleeve_case}, Size: {size}, Qty: {qty}")
+                        if sleeve_case is not None:  # Ensure it's not None
+                            if not all([item_name, material_id, print_type_id, sleeve_case]):
+                                return Response({"error": f"Missing required fields for item[{index}]"},
+                                                status=status.HTTP_400_BAD_REQUEST)
+                        else:
+                            if not all([item_name, material_id, print_type_id]):  # Check without sleeve_case
+                                return Response({"error": f"Missing required fields for item[{index}]"},
+                                                status=status.HTTP_400_BAD_REQUEST)
+
+                        # Ensure safe handling of sleeve_case before filtering Item
+                        item_obj = Item.objects.filter(
+                            name=item_name,
+                            material_id=material_id,
+                            print_type_id=print_type_id,
+                            is_sleeve__iexact=sleeve_case.strip() if sleeve_case else None  # Avoid strip() error
+                        ).first()
+
+                        if not item_obj:
+                            return Response({"error": f"No matching item found for item[{index}]"},
+                                            status=status.HTTP_404_NOT_FOUND)
+
+                        # If at least one valid item is found, create the order (if not already created)
+                        if not valid_item_found:
+                            order = Orderdata.objects.create(
+                                orderID=order_id,
+                                customer=customer,
+                                delivery_date=delivery_date,
+                                net_cost=str(net_cost_decimal),  # Convert Decimal to String
+                                gst=str(gst_value),  # Convert Decimal to String
+                                total_cost=str(total_cost),  # Convert Decimal to String
+                                logo=request.FILES.get('logo'),
+                                front_matter=request.data.get('front_matter'),
+                                front_img=request.FILES.get('front_img'),
+                                back_matter=request.data.get('back_matter'),
+                                back_img=request.FILES.get('back_img')
+                            )
+                            valid_item_found = True  # Flag to indicate that order is now created
+                            print(f"✅ Order Created: {order.orderID}")
+
+                        # Create OrderItem entry
+                        order_item = OrderItem.objects.create(
+                            order=order,
+                            item=item_obj,
+                            size=size,
+                            qty=int(qty),
+                            sleeve_case=sleeve_case
+                        )
+                        print(f"✅ OrderItem Created: {order_item}")
+                        
+                        # Append item details to response
+                        items_created.append({
+                            "item_id": item_obj.id,
+                            "name": item_obj.name,
+                            "size": size,
+                            "qty": qty,
+                            "sleeve_case": sleeve_case,
+                            "material": item_obj.material.name,
+                            "print_type": item_obj.print_type.name
+                        })
+
+                        index += 1  # Move to next item
+
+                    except Exception as e:
+                        return Response({"error": f"Error processing item[{index}]: {str(e)}"},
+                                        status=status.HTTP_400_BAD_REQUEST)
+
+                # If no valid items found, return an error response
+                if not valid_item_found:
+                    return Response({"error": "No matching items found, order not created."},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({
+                "orderID": order.orderID,
+                "message": "Order created successfully!",
+                "items": items_created
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 # Create your views here.
 class CreateOrderAPIView(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
+    permission_classes = [IsAuthenticated]  # Ensures only authenticated users can access
+
     def get(self, request, order_id=None):
+        # q_data=request.query_params.get()
         if order_id:
             try:
                 order = Orderdata.objects.get(orderID=order_id)
@@ -155,6 +292,9 @@ class CreateOrderAPIView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 class DetailedOrderAPIView (APIView): 
+    authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
+    permission_classes = [IsAuthenticated]  # Ensures only authenticated users can access
+
     def get(slef,request,order_id):
         try:
             order = Orderdata.objects.get(id=order_id)
@@ -335,35 +475,68 @@ class GetNextOrderNumberAPIView(APIView):
         order_number = self.generate_order_number(user_branch)
 
         return Response({"order_number": order_number}, status=200)
+@method_decorator(csrf_exempt, name='dispatch')  # Disable CSRF for this view
+class OrderPaymentAPI(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
+    permission_classes = [IsAuthenticated]  # Ensures only authenticated users can access
 
-class OrderPayment(APIView):
-    def post(self,request):
-        order_id=request.data.get('order_id')
-        total_amount=request.data.get('total_amount')
-        balance_amount=request.data.get('balance_amount')
-        paid_amount=request.data.get('paid_amount')
-        payment_method=request.data.get('payment_method')
-        payments=OrderPayment.objects.create(
-            order_id=order_id,
+    def post(self, request):
+        if request.user and isinstance(request.user, AnonymousUser):
+            return Response({"error": "User not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        order_id = request.data.get('order_id')
+
+        #  Handle missing order_id properly
+        if not order_id:
+            return Response({"error": "Order ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            order = Orderdata.objects.get(id=order_id)
+        except Orderdata.DoesNotExist:
+            return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        #  Convert to float for proper comparison
+        try:
+            total_amount = float(request.data.get('total_amount', 0))
+            balance_amount = float(request.data.get('balance_amount', 0))
+            paid_amount = float(request.data.get('paid_amount', 0))
+        except ValueError:
+            return Response({"error": "Invalid amount format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_method = request.data.get('payment_method')
+
+        #  Create payment entry
+        payments = OrderPayment.objects.create(
+            order_id=order,
             total_amount=total_amount,
             balance_amount=balance_amount,
             paid_amount=paid_amount,
-            payment_method=payment_method
+            payment_method=payment_method,
+            created_by=request.user
         )
         payments.save()
-        return Response({'message':'Pay Succesfully.'},status=status.HTTP_201_CREATED)
+
+        # Update order payment status
+        if balance_amount == 0 or total_amount == paid_amount:
+            order.Completed_payment = True
+            order.save()  # Ensure order is updated in the database
+
+        return Response({'message': 'Payment Successful'}, status=status.HTTP_201_CREATED)
 class OrderPaymentDetails(APIView):
-    def get(self,request,order_id):
-        payment_details=OrderPayment.objects.filter(order_id=order_id)
-        payment_details=[]
+    def get(self, request, order_id):
+        # Fetch payment details for the given order_id
+        payment_details = OrderPayment.objects.filter(order_id=order_id)
+
+        # Convert queryset to list of dictionaries
+        payment_data = []
         for data in payment_details:
-            {
-                'id':data.id,
-                'order_id':data.order_id,
-                'total_amount':data.total_amount,
-                'balance_amount':data.balance_amount,
-                'paid_amount':data.paid_amount,
-                'payment_method':data.payment_method,
-            }
-            payment_details.append(data)
-            return Response(payment_details)
+            payment_data.append({
+                'id': data.id,
+                'order_id': data.order_id.id,  # Access the order ID properly
+                'total_amount': data.total_amount,
+                'balance_amount': data.balance_amount,
+                'paid_amount': data.paid_amount,
+                'payment_method': data.payment_method,
+            })
+
+        return Response(payment_data, status=200)

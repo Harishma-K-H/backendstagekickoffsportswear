@@ -74,7 +74,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         if not user:
             raise AuthenticationFailed({'error': 'Invalid Credentials!'})
-
+        if not user.check_password(password):  # This correctly checks the hashed password
+            raise AuthenticationFailed({'error': 'Invalid Credentials!'})
         if not user.is_active:
             raise AuthenticationFailed({'error': 'Account is not active.'})
 
@@ -171,7 +172,7 @@ class UserSerializer(serializers.ModelSerializer):
     role=serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ['id','username','email','branch','role']
+        fields = ['id','username','email','branch','role','password']
     def get_branch(self,obj):
         branch_id=obj.branch
         if branch_id:

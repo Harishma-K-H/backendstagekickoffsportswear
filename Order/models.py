@@ -14,6 +14,8 @@ class Orderdata(models.Model):
     front_img = models.FileField(upload_to='front_images/', null=True, blank=True)
     back_matter = models.CharField(max_length=255, null=True, blank=True)
     back_img = models.FileField(upload_to='back_images/', null=True, blank=True)
+    Completed_payment=models.BooleanField(default=False)
+    invoice_flag=models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
