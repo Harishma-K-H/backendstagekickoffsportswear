@@ -1,5 +1,6 @@
 from django.db import models
 from user_auth.models import Item,Customer,User
+
 # Create your models here.
 class Orderdata(models.Model):
     orderID = models.CharField(max_length=100, unique=True)
@@ -33,6 +34,7 @@ class OrderItem(models.Model):
     is_active = models.BooleanField(default=True)
 class OrderPayment(models.Model):
     order_id=models.ForeignKey(Orderdata,on_delete=models.CASCADE,null=True,blank=True)
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
     total_amount=models.CharField(max_length=100,null=True,blank=True)
     balance_amount=models.CharField(max_length=100,null=True,blank=True)
     paid_amount=models.CharField(max_length=100,null=True,blank=True)
@@ -44,13 +46,21 @@ class OrderPayment(models.Model):
 
 
 class Invoice(models.Model):
-    invoice_id = models.CharField(max_length=100, unique=True)  # Unique identifier for the invoice
+    invoice_id = models.CharField(max_length=100, unique=True) # Unique identifier for the invoice
     order = models.ForeignKey(Orderdata, on_delete=models.CASCADE,null=True,blank=True)  # Link to the Order
     order_item_id= models.ForeignKey(OrderItem, on_delete=models.CASCADE,null=True,blank=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Cost with decimals
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # Discount percentage
     gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # GST percentage
     created_at = models.DateTimeField(auto_now_add=True)  # Timestamp when invoice is created
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
+    net_cost=models.CharField(max_length=30,null=True,blank=True)
+    delivery_date = models.DateField(null=True, blank=True)
+    logo = models.FileField(upload_to='logos/', null=True, blank=True)
+    front_matter = models.CharField(max_length=255, null=True, blank=True)
+    front_img = models.FileField(upload_to='front_images/', null=True, blank=True)
+    back_matter = models.CharField(max_length=255, null=True, blank=True)
+    back_img = models.FileField(upload_to='back_images/', null=True, blank=True)
 
     def __str__(self):
         return f"Invoice {self.invoice_id} for Order {self.order.orderID}"

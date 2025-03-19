@@ -195,7 +195,7 @@ class Item(models.Model):
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.name} ({self.get_is_sleeve_display()})"
+        return f"{self.id} - {self.name} ({self.get_is_sleeve_display()})"
     
 
 class Menu(models.Model):

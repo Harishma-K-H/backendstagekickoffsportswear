@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
-from .models import Orderdata, OrderItem,OrderPayment,Invoice
+from .models import Orderdata, OrderItem,OrderPayment,Invoice,InvoiceItem
 from .serializers import OrderSerializer
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -21,103 +21,210 @@ from django.db import transaction
 from django.conf import settings
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
+import uuid
 
-class InvoiceList(APIView):
-    def post(self, request, *args, **kwargs):
-        print("📌 Request Data:", request.data)
+
+def generate_invoice_id():
+    last_invoice = Invoice.objects.order_by('-id').first()
+    if last_invoice and last_invoice.invoice_id.startswith("INV"):
+        last_number = int(last_invoice.invoice_id.replace("INV", ""))
+        return f"INV{last_number + 1}"
+    return "INV10000"  # Start from INV10000 if no invoices exist
+def generate_invoice_id():
+    return f"INV{random.randint(10000, 99999)}"
+
+# class GetInvoiceNumberAPIView(APIView):
+#     permission_classes = [IsAuthenticated]  # Ensure user is authenticated
+
+#     def generate_order_number(self, branch):
+       
+#         # Get the last order for this branch
+#         last_order = Orderdata.objects.filter(orderID__startswith=f"{branch.code}").aggregate(Max('orderID'))
+        
+#         if last_order['orderID__max']:
+#             # Extract last number and increment it
+#             last_number = int(last_order['orderID__max'].split('/')[-1])
+#             new_number = last_number + 1
+#         else:
+#             new_number = 1  # Start from 0001 if no previous orders
+
+#         return f"{branch.code}{new_number:04d}"
+
+#     def get(self, request, *args, **kwargs):
+#         """Fetch the next order number for the request user's branch"""
+
+#         # Get the user's branch
+#         user_branch = request.user.branch
+
+#         if not user_branch:
+#             return Response({"error": "User is not associated with any branch."}, status=400)
+
+#         # Generate order number for user's branch
+#         order_number = self.generate_order_number(user_branch)
+
+#         return Response({"order_number": order_number}, status=200)
+class InvoiceView(APIView):
+    def get(self, request, invoice_id=None, *args, **kwargs):
         try:
-            # Extract order details
-            inovice_no=request.data.get('invoice_id')
+            # ✅ Fetch invoice by ID
+            invoice = Invoice.objects.get(invoice_id=invoice_id)
+            items = InvoiceItem.objects.filter(invoice=invoice)
+
+            # ✅ Prepare invoice response
+            invoice_data = {
+                "invoice_id": invoice.invoice_id,
+                "order_id": invoice.order_id,
+                "customer_id": invoice.customer.id,
+                "customer_name": invoice.customer.name,
+                "delivery_date": invoice.delivery_date.strftime("%d-%m-%Y"),
+                "net_cost": str(invoice.net_cost),
+                "gst": str(invoice.gst),
+                "total_cost": str(invoice.total_cost),
+                "items": [
+                    {
+                        "item_id": item.item.id,
+                        "name": item.item.name,
+                        "size": item.size,
+                        "qty": item.qty,
+                        "sleeve_case": item.sleeve_case,
+                        "material": item.item.material.name,
+                        "print_type": item.item.print_type.name
+                    } for item in items
+                ]
+            }
+
+            return Response(invoice_data, status=status.HTTP_200_OK)
+
+        except Invoice.DoesNotExist:
+            return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
+class InvoiceList(APIView):
+    def get(self, request, *args, **kwargs):
+        order_id = request.query_params.get('order_id')
+        customer_id = request.query_params.get('customer_id')
+
+        # ✅ Filter invoices based on parameters
+        if order_id:
+            invoices = Invoice.objects.filter(order_id=order_id)
+        elif customer_id:
+            invoices = Invoice.objects.filter(customer_id=customer_id)
+        else:
+            invoices = Invoice.objects.all()  # Fetch all invoices if no filters are provided
+
+        # ✅ Serialize the invoice data
+        invoice_data = []
+        for invoice in invoices:
+            items = InvoiceItem.objects.filter(invoice=invoice)
+
+            invoice_data.append({
+                "invoice_id": invoice.invoice_id,
+                "order_id": invoice.order_id,
+                "customer_id": invoice.customer.id,
+                "customer_name": invoice.customer.name,
+                "delivery_date": invoice.delivery_date.strftime("%d-%m-%Y"),
+                "net_cost": str(invoice.net_cost),
+                "gst": str(invoice.gst),
+                "total_cost": str(invoice.total_cost),
+                "items": [
+                    {
+                        "item_id": item.item.id,
+                        "name": item.item.name,
+                        "size": item.size,
+                        "qty": item.qty,
+                        "sleeve_case": item.sleeve_case,
+                        "material": item.item.material.name,
+                        "print_type": item.item.print_type.name
+                    } for item in items
+                ]
+            })
+
+        if not invoice_data:
+            return Response({"message": "No invoices found."}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(invoice_data, status=status.HTTP_200_OK)
+    def post(self, request, *args, **kwargs):
+        print("DEBUG: Received request data ->", request.data)
+        try:
             order_id = request.data.get('orderID')
-            # customer_id = request.data.get('customer')
+            customer_id = request.data.get('customer')
             delivery_date = request.data.get('delivery_date')
-            net_cost=request.data.get('net_cost')
-            # Fetch GST percentage from settings (default 5%)
+            net_cost = request.data.get('net_cost')
+
+            net_cost_decimal = Decimal(net_cost) if net_cost else Decimal(0)
+
             GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
-            if net_cost:
-                net_cost_decimal = Decimal(net_cost)  # Convert to Decimal
-                gst_value = (Decimal(GST_PERCENTAGE) / 100) * net_cost_decimal
-                total_cost = net_cost_decimal + gst_value
-            
-            # Convert delivery_date to correct format
+            gst_value = (Decimal(GST_PERCENTAGE) / 100) * net_cost_decimal
+            total_cost = net_cost_decimal + gst_value
+
             try:
                 delivery_date = datetime.strptime(delivery_date, "%d-%m-%Y").date()
             except ValueError:
-                return Response({"error": "Invalid date format. Use YYYY-MM-DD or DD-MM-YYYY."}, status=400)
+                return Response({"error": "Invalid date format. Use DD-MM-YYYY."}, status=400)
 
-            # Validate required fields
             if not all([order_id, customer_id, delivery_date]):
                 return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Get customer object
+            # ✅ Check if an invoice already exists for this order
+            existing_invoice = Invoice.objects.filter(order_id=order_id).first()
+            if existing_invoice:
+                return Response({"error": "Invoice already generated for this order."}, status=400)
+
             customer = get_object_or_404(Customer, id=customer_id)
 
-            # Ensure order is only created if at least one item matches
             with transaction.atomic():
                 items_created = []
-                index = 0
-                valid_item_found = False  # Flag to check if at least one item is created
+                errors = []
+                valid_item_found = False
 
+                # ✅ Generate custom invoice ID
+                invoice_id = generate_invoice_id()  # Use custom function
+
+                invoice = Invoice.objects.create(
+                    invoice_id=invoice_id,  # ✅ Custom Invoice ID
+                    order_id=order_id,
+                    customer=customer,
+                    delivery_date=delivery_date,
+                    net_cost=net_cost_decimal,
+                    gst=gst_value,
+                    total_cost=total_cost,
+                    logo=request.FILES.get('logo', None),
+                    front_matter=request.data.get('front_matter', ''),
+                    front_img=request.FILES.get('front_img', None),
+                    back_matter=request.data.get('back_matter', ''),
+                    back_img=request.FILES.get('back_img', None)
+                )
+
+                index = 0
                 while f'items[{index}][name]' in request.data:
                     try:
                         item_name = request.data.get(f'items[{index}][name]')
                         material_id = request.data.get(f'items[{index}][material]')
                         print_type_id = request.data.get(f'items[{index}][print_type]')
-                        sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
+                        sleeve_case = request.data.get(f'items[{index}][sleeve_case]', False)
                         size = request.data.get(f'items[{index}][size]')
-                        qty = request.data.get(f'items[{index}][qty]')
+                        qty = request.data.get(f'items[{index}][qty]', 0)
 
-                        print(f"🔍 Processing item[{index}] - Name: {item_name}, Material: {material_id}, Print Type: {print_type_id}, Sleeve: {sleeve_case}, Size: {size}, Qty: {qty}")
-                        if sleeve_case is not None:  # Ensure it's not None
-                            if not all([item_name, material_id, print_type_id, sleeve_case]):
-                                return Response({"error": f"Missing required fields for item[{index}]"},
-                                                status=status.HTTP_400_BAD_REQUEST)
-                        else:
-                            if not all([item_name, material_id, print_type_id]):  # Check without sleeve_case
-                                return Response({"error": f"Missing required fields for item[{index}]"},
-                                                status=status.HTTP_400_BAD_REQUEST)
+                        qty = int(qty) if qty else 0
 
-                        # Ensure safe handling of sleeve_case before filtering Item
                         item_obj = Item.objects.filter(
                             name=item_name,
                             material_id=material_id,
                             print_type_id=print_type_id,
-                            is_sleeve__iexact=sleeve_case.strip() if sleeve_case else None  # Avoid strip() error
+                            is_sleeve=sleeve_case
                         ).first()
 
                         if not item_obj:
-                            return Response({"error": f"No matching item found for item[{index}]"},
-                                            status=status.HTTP_404_NOT_FOUND)
+                            errors.append(f"No matching item found for item[{index}]")
+                            index += 1
+                            continue  
 
-                        # If at least one valid item is found, create the order (if not already created)
-                        if not valid_item_found:
-                            order = Orderdata.objects.create(
-                                orderID=order_id,
-                                customer=customer,
-                                delivery_date=delivery_date,
-                                net_cost=str(net_cost_decimal),  # Convert Decimal to String
-                                gst=str(gst_value),  # Convert Decimal to String
-                                total_cost=str(total_cost),  # Convert Decimal to String
-                                logo=request.FILES.get('logo'),
-                                front_matter=request.data.get('front_matter'),
-                                front_img=request.FILES.get('front_img'),
-                                back_matter=request.data.get('back_matter'),
-                                back_img=request.FILES.get('back_img')
-                            )
-                            valid_item_found = True  # Flag to indicate that order is now created
-                            print(f"✅ Order Created: {order.orderID}")
-
-                        # Create OrderItem entry
-                        order_item = OrderItem.objects.create(
-                            order=order,
+                        InvoiceItem.objects.create(
+                            invoice=invoice,
                             item=item_obj,
                             size=size,
-                            qty=int(qty),
+                            qty=qty,
                             sleeve_case=sleeve_case
                         )
-                        print(f"✅ OrderItem Created: {order_item}")
-                        
-                        # Append item details to response
+
                         items_created.append({
                             "item_id": item_obj.id,
                             "name": item_obj.name,
@@ -128,26 +235,26 @@ class InvoiceList(APIView):
                             "print_type": item_obj.print_type.name
                         })
 
-                        index += 1  # Move to next item
+                        valid_item_found = True
 
                     except Exception as e:
-                        return Response({"error": f"Error processing item[{index}]: {str(e)}"},
-                                        status=status.HTTP_400_BAD_REQUEST)
+                        errors.append(f"Error processing item[{index}]: {str(e)}")
 
-                # If no valid items found, return an error response
+                    index += 1
+
                 if not valid_item_found:
-                    return Response({"error": "No matching items found, order not created."},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                    invoice.delete()  
+                    return Response({"error": "No matching items found, invoice not created."}, status=400)
+
+                if errors:
+                    return Response({"errors": errors}, status=400)
 
             return Response({
-                "orderID": order.orderID,
-                "message": "Order created successfully!",
-                "items": items_created
-            }, status=status.HTTP_201_CREATED)
+                "message": f"Invoice {invoice_id} created successfully!",
+            }, status=201)
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
 # Create your views here.
 class CreateOrderAPIView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
