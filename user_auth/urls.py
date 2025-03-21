@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView
+from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView,DistrictList
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -7,6 +7,7 @@ urlpatterns = [
     path('api_branch/details/<int:branch_id>/',BranchDetailView.as_view(),name='branch_list'),
     path("api/token/", login_view.as_view(), name="token_obtain_pair"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path('district_list/',DistrictList.as_view(),name='district_list'),
     path('api/users/', UserView.as_view(), name='user_list'),  # GET all & POST new user
     path('api/users/<int:user_id>/', UserDetailView.as_view(), name='user_detail'),  # GET, PUT, DELETE user
     path('customers/', CustomerListCreateAPIView.as_view(), name='customer-list-create'),

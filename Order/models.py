@@ -3,6 +3,12 @@ from user_auth.models import Item,Customer,User
 
 # Create your models here.
 class Orderdata(models.Model):
+    ORDER_STATUS = [
+        ('Pending', 'Pending'),
+        ('Inprogress', 'Inprogress'),
+        ('Completed', 'Completed'),
+        ('Canceled', 'Canceled')
+    ]
     orderID = models.CharField(max_length=100, unique=True)
     order_date = models.DateTimeField(auto_now_add=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
@@ -17,6 +23,7 @@ class Orderdata(models.Model):
     back_img = models.FileField(upload_to='back_images/', null=True, blank=True)
     Completed_payment=models.BooleanField(default=False)
     invoice_flag=models.BooleanField(default=False)
+    status=models.CharField(max_length=100,choices=ORDER_STATUS,default="Pending",null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -53,6 +60,7 @@ class Invoice(models.Model):
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # Discount percentage
     gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # GST percentage
     created_at = models.DateTimeField(auto_now_add=True)  # Timestamp when invoice is created
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
     net_cost=models.CharField(max_length=30,null=True,blank=True)
     delivery_date = models.DateField(null=True, blank=True)

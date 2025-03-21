@@ -87,7 +87,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'access': str(refresh.access_token),
                 'role': user.role.name if user.role else None,
                 'name': user.get_full_name(),
-                'branch_id': user.branch_id,
+                'branch_id': {
+                    'id': user.branch.id if user.branch else None,
+                    'name': user.branch.name if user.branch else None,
+                    'code': user.branch.code if user.branch else None
+                    }
             }
 
             if user.role.name == 'Admin':

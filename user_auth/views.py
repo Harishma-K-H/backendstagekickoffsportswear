@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import Branch,User,Customer,Material,PrintType,Model_data,Item,UserRole,MaterialData
+from .models import Branch,User,Customer,Material,PrintType,Model_data,Item,UserRole,MaterialData,District
 from .serializers import BranchSerializer,CustomTokenObtainPairSerializer,UserRoleSerializer,MaterialDataSerializer,UserSerializer,CustomerSerializer,PrintTypeSerializer,MaterialSerializer,ModelDataSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import AllowAny 
@@ -16,13 +16,23 @@ from rest_framework import viewsets
 from .permissions import has_permission
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
-
+from django.http import JsonResponse
+from rest_framework.pagination import PageNumberPagination
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+class CustomPagination(PageNumberPagination):
+    page_size = 20  # Default page size
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
+class DistrictList(APIView):
+    def get(self,request):
+        districts = District.objects.all().values('id', 'name')
 
+        # Remove unwanted spaces or carriage returns from names
+        cleaned_districts = [{'id': d['id'], 'name': d['name'].strip()} for d in districts]
 
-
+        return JsonResponse(cleaned_districts, safe=False)
 class login_view(TokenObtainPairView):
     serializer_class=CustomTokenObtainPairSerializer
     Permission_classes=[AllowAny]# Corrected permission usage
@@ -36,10 +46,27 @@ class UserView(APIView):
 
     # 🔹 POST: Create a new user
     def post(self, request):
+        # Check if branch is included in request data
+        branch_id = request.data.get('branch')
+
+        # Validate if the branch exists
+        if branch_id:
+            try:
+                branch = Branch.objects.get(id=branch_id)
+            except Branch.DoesNotExist:
+                return Response({"branch": "Invalid branch ID"}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            user = serializer.save()
+
+            # Assign branch if provided
+            if branch_id:
+                user.branch = branch
+                user.save()
+
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UserDetailView(APIView):
@@ -408,8 +435,12 @@ class ItemView(APIView):
                 })
 
             return Response(item_list, status=status.HTTP_200_OK)
+        
+        # Apply pagination
+        paginator = CustomPagination()
+        paginated_items = paginator.paginate_queryset(items, request)
         item_list = []
-        for item in items:
+        for item in paginated_items:
             item_list.append({
                 "id": item.id,
                 "name": item.name,
@@ -427,7 +458,7 @@ class ItemView(APIView):
 
             })
 
-        return Response(item_list, status=status.HTTP_200_OK)
+        return paginator.get_paginated_response(item_list)
     def post(self, request):
         try:
             # Extract fields from request data

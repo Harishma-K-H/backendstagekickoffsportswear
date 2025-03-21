@@ -19,10 +19,16 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 from django.db import transaction
 from django.conf import settings
+from django.db.models import Sum
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
 import uuid
+from rest_framework.pagination import PageNumberPagination
 
+class CustomPagination(PageNumberPagination):
+    page_size = 20  # Default page size
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 def generate_invoice_id():
     last_invoice = Invoice.objects.order_by('-id').first()
@@ -66,32 +72,64 @@ def generate_invoice_id():
 class InvoiceView(APIView):
     def get(self, request, invoice_id=None, *args, **kwargs):
         try:
-            # ✅ Fetch invoice by ID
+            # ✅ Fetch the invoice by ID
             invoice = Invoice.objects.get(invoice_id=invoice_id)
             items = InvoiceItem.objects.filter(invoice=invoice)
-
+            total_paid = OrderPayment.objects.filter(order_id=invoice.order).aggregate(Sum('paid_amount'))['paid_amount__sum'] or 0
             # ✅ Prepare invoice response
             invoice_data = {
                 "invoice_id": invoice.invoice_id,
-                "order_id": invoice.order_id,
+                "order_id": invoice.order.id,
+                "orderID": invoice.order.orderID,
                 "customer_id": invoice.customer.id,
                 "customer_name": invoice.customer.name,
+                "customer_address1": invoice.customer.address1,
+                "customer_address2": invoice.customer.address2,
+                "customer_email": invoice.customer.email,
+                "customer_phn": invoice.customer.mobile_number1,
+                "customer_business_name": invoice.customer.business_name,
                 "delivery_date": invoice.delivery_date.strftime("%d-%m-%Y"),
                 "net_cost": str(invoice.net_cost),
                 "gst": str(invoice.gst),
+                "created_at": invoice.created_at,
                 "total_cost": str(invoice.total_cost),
-                "items": [
-                    {
-                        "item_id": item.item.id,
-                        "name": item.item.name,
-                        "size": item.size,
-                        "qty": item.qty,
-                        "sleeve_case": item.sleeve_case,
-                        "material": item.item.material.name,
-                        "print_type": item.item.print_type.name
-                    } for item in items
-                ]
+                "total_paid_amount": str(total_paid),
+                "items": []
             }
+
+            # ✅ Loop through invoice items
+            for item in items:
+                # Default unit cost as None (in case it's not found)
+                unit_cost = None
+
+                # ✅ Check if the item exists with matching conditions
+                query = Item.objects.filter(
+                    name=item.item.name,
+                    material=item.item.material,
+                    print_type=item.item.print_type
+                )
+                print("TESTSTTTTT",query)
+
+                # ✅ Check if sleeve_case should be included
+                if item.item.name not in ["SHORTS", "LOWER"]:
+                    query = query.filter(is_sleeve=item.sleeve_case)
+
+                matched_item = query.first()
+                
+                if matched_item:
+                    unit_cost = str(matched_item.item_cost)  # Convert to string for JSON response
+
+                # ✅ Append item details to the response
+                invoice_data["items"].append({
+                    "item_id": item.item.id,
+                    "name": item.item.name,
+                    "size": item.size,
+                    "qty": item.qty,
+                    "sleeve_case": item.item.is_sleeve,
+                    "material": item.item.material.name,
+                    "print_type": item.item.print_type.name,
+                    "unit_cost": unit_cost  # ✅ Add unit cost to response
+                })
 
             return Response(invoice_data, status=status.HTTP_200_OK)
 
@@ -118,12 +156,16 @@ class InvoiceList(APIView):
             invoice_data.append({
                 "invoice_id": invoice.invoice_id,
                 "order_id": invoice.order_id,
+                'orderID':invoice.order.orderID,
                 "customer_id": invoice.customer.id,
+                'customer_email':invoice.customer.email,
+                'customer_phn':invoice.customer.mobile_number1,
                 "customer_name": invoice.customer.name,
                 "delivery_date": invoice.delivery_date.strftime("%d-%m-%Y"),
                 "net_cost": str(invoice.net_cost),
                 "gst": str(invoice.gst),
                 "total_cost": str(invoice.total_cost),
+                "created_at":invoice.created_at,
                 "items": [
                     {
                         "item_id": item.item.id,
@@ -270,9 +312,12 @@ class CreateOrderAPIView(APIView):
             except Orderdata.DoesNotExist:
                 return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
         else:
+
             orders = Orderdata.objects.all()
-            serializer = OrderSerializer(orders, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            paginator = CustomPagination()
+            paginated_orders = paginator.paginate_queryset(orders, request)
+            serializer = OrderSerializer(paginated_orders, many=True)
+            return paginator.get_paginated_response(serializer.data)
     parser_classes = (MultiPartParser, FormParser)  # Support file uploads
 
     def post(self, request, *args, **kwargs):
