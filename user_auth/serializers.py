@@ -176,7 +176,7 @@ class UserSerializer(serializers.ModelSerializer):
     role=serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ['id','username','email','branch','role','password']
+        fields = ['id','username','email','branch','role','password','first_name','middle_name','last_name']
     def get_branch(self,obj):
         branch_id=obj.branch
         if branch_id:

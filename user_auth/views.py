@@ -17,13 +17,8 @@ from .permissions import has_permission
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
 from django.http import JsonResponse
-from rest_framework.pagination import PageNumberPagination
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
-class CustomPagination(PageNumberPagination):
-    page_size = 20  # Default page size
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+from .pagination import CustomPagination
+
 
 class DistrictList(APIView):
     def get(self,request):

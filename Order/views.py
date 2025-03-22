@@ -23,13 +23,7 @@ from django.db.models import Sum
 from decimal import Decimal
 from rest_framework.permissions import IsAuthenticated
 import uuid
-from rest_framework.pagination import PageNumberPagination
-
-class CustomPagination(PageNumberPagination):
-    page_size = 20  # Default page size
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
+from user_auth.pagination import CustomPagination
 def generate_invoice_id():
     last_invoice = Invoice.objects.order_by('-id').first()
     if last_invoice and last_invoice.invoice_id.startswith("INV"):

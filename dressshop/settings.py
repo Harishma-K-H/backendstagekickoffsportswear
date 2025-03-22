@@ -104,6 +104,10 @@ DATABASES = {
         'PORT': '3306',       
     }
 }
+# REST_FRAMEWORK = {
+#     'DEFAULT_PAGINATION_CLASS': 'user_auth.pagination.CustomPagination',  # Update with your actual app name
+#     'PAGE_SIZE': 2,  # Default page size
+# }
 
 WSGI_APPLICATION = 'dressshop.wsgi.application'
 
