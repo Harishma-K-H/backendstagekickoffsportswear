@@ -236,6 +236,14 @@ class CustomerDetailAPIView(APIView):
         return Response({"message": "Customer soft deleted"}, status=status.HTTP_204_NO_CONTENT)
 class ModelListCreateAPIView(APIView):
     def get(self, request):
+        q_data = request.query_params.get('data')
+
+        # If query param is "model_list", return only id and name
+        if q_data == "model_list":
+            model_list = list(Model_data.objects.values("id", "name"))  # Fetch only id and name
+            return Response(model_list, status=status.HTTP_200_OK)
+
+        # Otherwise, return all model data
         models = Model_data.objects.all()
         serializer = ModelDataSerializer(models, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -369,9 +377,9 @@ class MaterialDetailAPIView(APIView):
 
 class PrintTypeListCreateAPIView(APIView):
     def get(self, request):
-        print_types = PrintType.objects.all()
-        serializer = PrintTypeSerializer(print_types, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        print_type_list = list(PrintType.objects.values("id", "name"))
+        return Response(print_type_list, status=status.HTTP_200_OK)
+        
 
     def post(self, request):
         serializer = PrintTypeSerializer(data=request.data)
@@ -629,3 +637,40 @@ class UserRoleDetailAPIView(APIView):
         role.is_active = False
         role.save()
         return Response({"message": "Role deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+    
+class ModelMaterialList(APIView):
+    def get(self, request, model_id):
+        material=Material.objects.filter(model_id=model_id)
+        material_names = list(material.values('id','name','model_id'))
+        if not material_names:
+            return Response({"error": "No materials found for this model."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(material_names, status=status.HTTP_200_OK)
+
+class ItemCostView(APIView):
+    def get(self, request):
+        # Use request.query_params for GET requests
+        model = request.data.get('model')
+        material = request.data.get('material')
+        print_type = request.data.get('print_type')
+        sleeve_case = request.data.get('sleevecase')
+        print(f"Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
+
+        # Fetch the item matching the given criteria
+        item = Item.objects.filter(name=model, material_id=material, print_type_id=print_type).first()
+
+        # Check if item exists
+        if not item:
+            return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Prepare response data
+        item_data = {
+            "id": item.id,
+            "name": item.name,
+            "cost": item.item_cost
+        }
+
+        # Check sleeve condition
+        if item.is_sleeve == sleeve_case:
+            return Response(item_data, status=status.HTTP_200_OK)
+
+        return Response(item_data, status=status.HTTP_200_OK)

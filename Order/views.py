@@ -10,7 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Max 
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from user_auth.models import Item,Branch,User,Customer,MaterialData,PrintType,Material
+from user_auth.models import Item,Branch,User,Customer,MaterialData,PrintType,Material,models
 import random
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.models import AnonymousUser
@@ -21,7 +21,9 @@ from django.db import transaction
 from django.conf import settings
 from django.db.models import Sum
 from decimal import Decimal
+from rest_framework import permissions
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 import uuid
 from user_auth.pagination import CustomPagination
 def generate_invoice_id():
@@ -86,6 +88,14 @@ class InvoiceView(APIView):
                 "net_cost": str(invoice.net_cost),
                 "gst": str(invoice.gst),
                 "created_at": invoice.created_at,
+                "created_by": {
+                    "id": invoice.created_by.id if invoice.created_by else None,
+                    "name": invoice.created_by.get_full_name() if invoice.created_by else "Unknown",
+                    "branch": invoice.created_by.branch.name if invoice.created_by and invoice.created_by.branch else "N/A",
+                    "location": invoice.created_by.branch.location if invoice.created_by and invoice.created_by.branch else "N/A",
+                    "city": invoice.created_by.branch.city if invoice.created_by and invoice.created_by.branch else "N/A",
+                    "district": invoice.created_by.branch.district if invoice.created_by and invoice.created_by.branch else "N/A",
+                    } if invoice.created_by else None,
                 "total_cost": str(invoice.total_cost),
                 "total_paid_amount": str(total_paid),
                 "items": []
@@ -129,7 +139,20 @@ class InvoiceView(APIView):
 
         except Invoice.DoesNotExist:
             return Response({"error": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.utils.dateformat import format
+from .models import Invoice, InvoiceItem
+from user_auth.pagination import CustomPagination
+
 class InvoiceList(APIView):
+    authentication_classes = [SessionAuthentication, BasicAuthentication, JWTAuthentication]
+    permission_classes = [IsAuthenticated]  
+
     def get(self, request, *args, **kwargs):
         order_id = request.query_params.get('order_id')
         customer_id = request.query_params.get('customer_id')
@@ -142,24 +165,27 @@ class InvoiceList(APIView):
         else:
             invoices = Invoice.objects.all()  # Fetch all invoices if no filters are provided
 
+        # ✅ Apply Pagination
+        paginator = CustomPagination()
+        paginated_invoices = paginator.paginate_queryset(invoices, request)
+        
         # ✅ Serialize the invoice data
         invoice_data = []
-        for invoice in invoices:
+        for invoice in paginated_invoices:
             items = InvoiceItem.objects.filter(invoice=invoice)
-
             invoice_data.append({
                 "invoice_id": invoice.invoice_id,
                 "order_id": invoice.order_id,
-                'orderID':invoice.order.orderID,
+                'orderID': invoice.order.orderID,
                 "customer_id": invoice.customer.id,
-                'customer_email':invoice.customer.email,
-                'customer_phn':invoice.customer.mobile_number1,
+                'customer_email': invoice.customer.email,
+                'customer_phn': invoice.customer.mobile_number1,
                 "customer_name": invoice.customer.name,
-                "delivery_date": invoice.delivery_date.strftime("%d-%m-%Y"),
+                "delivery_date": format(invoice.delivery_date, "d-m-Y"),
                 "net_cost": str(invoice.net_cost),
                 "gst": str(invoice.gst),
                 "total_cost": str(invoice.total_cost),
-                "created_at":invoice.created_at,
+                "created_at": invoice.created_at,
                 "items": [
                     {
                         "item_id": item.item.id,
@@ -176,7 +202,9 @@ class InvoiceList(APIView):
         if not invoice_data:
             return Response({"message": "No invoices found."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(invoice_data, status=status.HTTP_200_OK)
+        # ✅ Return paginated response
+        return paginator.get_paginated_response(invoice_data)
+
     def post(self, request, *args, **kwargs):
         print("DEBUG: Received request data ->", request.data)
         try:
@@ -226,7 +254,8 @@ class InvoiceList(APIView):
                     front_matter=request.data.get('front_matter', ''),
                     front_img=request.FILES.get('front_img', None),
                     back_matter=request.data.get('back_matter', ''),
-                    back_img=request.FILES.get('back_img', None)
+                    back_img=request.FILES.get('back_img', None),
+                    created_by=request.user
                 )
 
                 index = 0
@@ -686,3 +715,4 @@ class OrderPaymentDetails(APIView):
             })
 
         return Response(payment_data, status=200)
+    

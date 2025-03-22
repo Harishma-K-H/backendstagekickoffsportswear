@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView,DistrictList
+from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView,DistrictList,ModelMaterialList,ItemCostView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -22,11 +22,13 @@ urlpatterns = [
     path('api/materials/<int:material_id>/', MaterialDetailAPIView.as_view(), name='material-detail'),
 
     path('api/material_data/', MaterialDataListCreateAPIView.as_view(), name='material-list-create'),
+    path('material_list/<int:model_id>/',ModelMaterialList.as_view(),name="model_material"),
     path('api/material_data/<int:material_id>/', MaterialDataDetailAPIView.as_view(), name='material-detail'),
     path('api/print-types/', PrintTypeListCreateAPIView.as_view(), name='print-type-list-create'),
     path('api/print-types/<int:print_type_id>/', PrintTypeDetailAPIView.as_view(), name='print-type-detail'),
     path('api_item/',ItemView.as_view(),name='item_list'),
-    path('api_item/<int:item_id>/',ItemDetailedView.as_view(),name='item_detailed_list')
+    path('api_item/<int:item_id>/',ItemDetailedView.as_view(),name='item_detailed_list'),
+    path('itemcost/',ItemCostView.as_view(),name="item_cost")
     
     
 ]
