@@ -135,6 +135,19 @@ class Customer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    def save(self, *args, **kwargs):
+        if not self.custom_id:  # Generate only if not already set
+            self.custom_id = self.generate_unique_custom_id()
+        super().save(*args, **kwargs)
+
+    def generate_unique_custom_id(self):
+        while True:
+            prefix = random.choice(string.ascii_uppercase)  # Random uppercase letter (A-Z)
+            numeric_part = str(random.randint(1000000000, 9999999999))  # 10-digit number
+            new_id = prefix + numeric_part  # Combine letter + number
+            
+            if not Customer.objects.filter(custom_id=new_id).exists():
+                return new_id
 
     def __str__(self):
         return self.name

@@ -40,13 +40,23 @@ class PrintTypeSerializer(serializers.ModelSerializer):
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = '__all__' 
+        fields = '__all__'
+        read_only_fields = ['custom_id']  # Ensure custom_id is not required in the request
+
     def validate_email(self, value):
-        """
-        Check if the email already exists in the database.
-        """
+        """ Check if the email already exists in the database. """
         if Customer.objects.filter(email=value).exists():
-            raise serializers.ValidationError("This email is already in use. Please use a different email.")
+            raise serializers.ValidationError("A customer with this email already exists.")
+        return value
+
+    def validate_mobile_number1(self, value):
+        """ Check if the mobile number is exactly 10 digits long and unique. """
+        if len(value) != 10:
+            raise serializers.ValidationError("Mobile number must be exactly 10 digits long.")
+        if not value.isdigit():
+            raise serializers.ValidationError("Mobile number must contain only digits.")
+        if Customer.objects.filter(mobile_number1=value).exists():
+            raise serializers.ValidationError("A customer with this mobile number1 already exists.")
         return value
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     login_identifier = serializers.CharField(write_only=True, required=True)
