@@ -27,6 +27,7 @@ class OrderSerializer(serializers.ModelSerializer):
             {
                 'id': item.item.id,
                 'name': item.item.name,
+                'model':item.item.model.name,
                 'code': item.item.item_code,
                 'material': item.item.material.name,  # Assuming material is a foreign key
                 'print_type': item.item.print_type.name,  # Assuming print_type is a foreign key

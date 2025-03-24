@@ -18,6 +18,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
 from django.http import JsonResponse
 from .pagination import CustomPagination
+from django.db.models import Q
+
 
 
 class DistrictList(APIView):
@@ -175,16 +177,27 @@ class CustomerListCreateAPIView(APIView):
     """
     
     def get(self, request):
+        q_search=request.query_params.get('search')
         q_data=request.query_params.get('data')
         if q_data=="customer_list":
             customers = Customer.objects.filter(deleted_at__isnull=True).values(
                 'id', 'custom_id', 'name', 'mobile_number1','address1','address2', 'email'
             )
-            return Response(customers, status=status.HTTP_200_OK)
+            if q_search:
+                customers = customers.filter(
+                    Q(custom_id__icontains=q_search) | 
+                    Q(name__icontains=q_search) | 
+                    Q(gst_no__icontains=q_search)
+                    )
+
+            return Response(list(customers), status=status.HTTP_200_OK)
         else:
-            customers = Customer.objects.filter(deleted_at__isnull=True)
-            serializer = CustomerSerializer(customers, many=True)
-            return Response(serializer.data)
+            customers = Customer.objects.all()
+            paginator = CustomPagination()
+            paginated_customer = paginator.paginate_queryset(customers, request)
+            # customers = Customer.objects.filter(deleted_at__isnull=True)
+            serializer = CustomerSerializer(paginated_customer, many=True)
+            return paginator.get_paginated_response (serializer.data)
 
     def post(self, request):
         user=request.user
@@ -428,7 +441,8 @@ class ItemView(APIView):
             for item in items:
                 item_list.append({
                     "id": item.id,
-                    "name": item.name,
+                    "name": item.name if item.name else None,
+                    "model":item.model.name if item.model else None,
                     "item_cost": float(item.item_cost),  # Convert Decimal to float
                     "material": item.material.name if item.material else None,  # Avoid NoneType error
                     "print_type": item.print_type.name if item.print_type else None,
@@ -446,7 +460,8 @@ class ItemView(APIView):
         for item in paginated_items:
             item_list.append({
                 "id": item.id,
-                "name": item.name,
+                "name": item.name if item.name else None,
+                "model":item.model.name if item.model else None,
                 "item_code": item.item_code,
                 "item_cost": float(item.item_cost),  # Convert Decimal to float
                 "item_alert": item.item_alert,
@@ -469,6 +484,7 @@ class ItemView(APIView):
             item_code = request.data.get("item_code")
             item_cost = request.data.get("item_cost")
             item_alert = request.data.get("item_alert")
+            model_id=request.data.get('model')
             material_id = request.data.get("material")
             gst = request.data.get("gst")
             tax = request.data.get("tax")
@@ -490,12 +506,14 @@ class ItemView(APIView):
                 return Response({"error": "Invalid number format for cost, GST, or tax"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Get related objects
+            model=Model_data.objects.get(id=model_id)if model_id else None 
             material = Material.objects.get(id=material_id) if material_id else None
             print_type = PrintType.objects.get(id=print_type_id) if print_type_id else None
 
             # Create the Item object
             item = Item.objects.create(
                 name=name,
+                model=model,
                 item_code=item_code,
                 item_cost=item_cost,
                 item_alert=item_alert,
@@ -522,7 +540,8 @@ class ItemDetailedView(APIView):
             item = get_object_or_404(Item, id=item_id, is_active=True)
             return Response({
                 "id": item.id,
-                "name": item.name,
+                "name": item.name if item.name else None,
+                "model": item.model.name if item.model else None,
                 "item_code": item.item_code,
                 "item_cost": float(item.item_cost),
                 "item_alert": item.item_alert,
@@ -562,15 +581,19 @@ class ItemDetailedView(APIView):
             if "print_type" in request.data:
                 item.print_type = PrintType.objects.get(id=request.data["print_type"]) if request.data["print_type"] else None
 
+            if "model" in request.data:
+                item.model=Model_data.objects.get(id=request.data["model"]) if request.data['model'] else None
+
             item.save()
 
             return Response({
                 "message": "Item updated successfully!",
                 "id": item.id,
-                "name": item.name,
+                "name": item.name if item.name else None,
                 "item_code": item.item_code,
                 "item_cost": float(item.item_cost),
                 "item_alert": item.item_alert,
+                "model":item.model.name if item.model else None,
                 "material": item.material.name if item.material else None,
                 "gst": float(item.gst) if item.gst else None,
                 "tax": float(item.tax) if item.tax else None,
@@ -656,7 +679,7 @@ class ItemCostView(APIView):
         print(f"Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
 
         # Fetch the item matching the given criteria
-        item = Item.objects.filter(name=model, material_id=material, print_type_id=print_type).first()
+        item = Item.objects.filter(model=model, material_id=material, print_type_id=print_type).first()
 
         # Check if item exists
         if not item:

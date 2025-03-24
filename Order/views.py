@@ -10,7 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.db.models import Max 
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
-from user_auth.models import Item,Branch,User,Customer,MaterialData,PrintType,Material,models
+from user_auth.models import Item,Branch,User,Customer,MaterialData,PrintType,Material,models,Model_data
 import random
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.models import AnonymousUser
@@ -380,25 +380,27 @@ class CreateOrderAPIView(APIView):
                 while f'items[{index}][name]' in request.data:
                     try:
                         item_name = request.data.get(f'items[{index}][name]')
+                        model_id = request.data.get(f'items[{index}][model]')
                         material_id = request.data.get(f'items[{index}][material]')
                         print_type_id = request.data.get(f'items[{index}][print_type]')
                         sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
                         size = request.data.get(f'items[{index}][size]')
                         qty = request.data.get(f'items[{index}][qty]')
 
-                        print(f"🔍 Processing item[{index}] - Name: {item_name}, Material: {material_id}, Print Type: {print_type_id}, Sleeve: {sleeve_case}, Size: {size}, Qty: {qty}")
+                        print(f"🔍 Processing item[{index}] - Name: {item_name},Model:{model_id}, Material: {material_id}, Print Type: {print_type_id}, Sleeve: {sleeve_case}, Size: {size}, Qty: {qty}")
                         if sleeve_case is not None:  # Ensure it's not None
-                            if not all([item_name, material_id, print_type_id, sleeve_case]):
+                            if not all([item_name, model_id, material_id, print_type_id, sleeve_case]):
                                 return Response({"error": f"Missing required fields for item[{index}]"},
                                                 status=status.HTTP_400_BAD_REQUEST)
                         else:
-                            if not all([item_name, material_id, print_type_id]):  # Check without sleeve_case
+                            if not all([item_name,model_id, material_id, print_type_id]):  # Check without sleeve_case
                                 return Response({"error": f"Missing required fields for item[{index}]"},
                                                 status=status.HTTP_400_BAD_REQUEST)
 
                         # Ensure safe handling of sleeve_case before filtering Item
                         item_obj = Item.objects.filter(
                             name=item_name,
+                            model=model_id,
                             material_id=material_id,
                             print_type_id=print_type_id,
                             is_sleeve__iexact=sleeve_case.strip() if sleeve_case else None  # Avoid strip() error
@@ -421,7 +423,8 @@ class CreateOrderAPIView(APIView):
                                 front_matter=request.data.get('front_matter'),
                                 front_img=request.FILES.get('front_img'),
                                 back_matter=request.data.get('back_matter'),
-                                back_img=request.FILES.get('back_img')
+                                back_img=request.FILES.get('back_img'),
+                                status="Pending"
                             )
                             valid_item_found = True  # Flag to indicate that order is now created
                             print(f"✅ Order Created: {order.orderID}")
@@ -443,6 +446,7 @@ class CreateOrderAPIView(APIView):
                             "size": size,
                             "qty": qty,
                             "sleeve_case": sleeve_case,
+                            'model':item_obj.model.name,
                             "material": item_obj.material.name,
                             "print_type": item_obj.print_type.name
                         })
@@ -534,6 +538,7 @@ class OrderItemUpdateView(APIView):
                     order_item = get_object_or_404(OrderItem, order=order, item_id=item_id)
 
                     # Get the fields from the request (if provided)
+                    model_id = request.data.get(f'items[{index}][model]', None)
                     material_id = request.data.get(f'items[{index}][material]', None)
                     print_type_id = request.data.get(f'items[{index}][print_type]', None)
                     size = request.data.get(f'items[{index}][size]', None)
@@ -541,6 +546,8 @@ class OrderItemUpdateView(APIView):
                     sleeve_case = request.data.get(f'items[{index}][sleeve_case]', None)
 
                     # ✅ Update OrderItem fields only if new values are provided
+                    if model_id:
+                        model = get_object_or_404(Model_data, id=model_id)
                     if material_id:
                         material = get_object_or_404(MaterialData, id=material_id)
                         order_item.item.material = material
@@ -570,6 +577,7 @@ class OrderItemUpdateView(APIView):
                         "size": order_item.size,
                         "qty": order_item.qty,
                         "sleeve_case": order_item.sleeve_case,
+                        "model": order_item.item.model.name if order_item.item.model else None,
                         "material": order_item.item.material.name if order_item.item.material else None,
                         "print_type": order_item.item.print_type.name if order_item.item.print_type else None
                     })
