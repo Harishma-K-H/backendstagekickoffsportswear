@@ -671,12 +671,17 @@ class ModelMaterialList(APIView):
 
 class ItemCostView(APIView):
     def get(self, request):
-        # Use request.query_params for GET requests
-        model = request.data.get('model')
-        material = request.data.get('material')
-        print_type = request.data.get('print_type')
-        sleeve_case = request.data.get('sleevecase')
+        # Get parameters from query_params (for GET requests)
+        model = request.query_params.get('model')
+        material = request.query_params.get('material')
+        print_type = request.query_params.get('print_type')
+        sleeve_case = request.query_params.get('sleevecase')
+
         print(f"Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
+
+        # Convert sleeve_case to boolean
+        if sleeve_case is not None:
+            sleeve_case = sleeve_case.lower() == "true"
 
         # Fetch the item matching the given criteria
         item = Item.objects.filter(model=model, material_id=material, print_type_id=print_type).first()
