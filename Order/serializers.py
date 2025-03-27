@@ -30,6 +30,7 @@ class OrderSerializer(serializers.ModelSerializer):
                 'name': item.item.name if item.item and item.item.name else None,
                 'model': item.item.model.name if item.item and item.item.model else None,
                 'code': item.item.item_code,
+                'unit_cost':item.item.item_cost if item.item and item.item.item_cost else None,
                 'material': item.item.material.name,  # Assuming material is a foreign key
                 'print_type': item.item.print_type.name,  # Assuming print_type is a foreign key
                 'sleeve_case': item.sleeve_case if item.sleeve_case else None,
