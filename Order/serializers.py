@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Orderdata, OrderItem
+from .models import Orderdata, OrderItem,OrderPayment
 from user_auth.serializers import ItemSerializer,CustomerSerializer
 from user_auth.models import Item,User,Customer
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -13,12 +13,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
+    payment_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Orderdata
         fields = [
             'id', 'orderID', 'customer', 'order_date', 'delivery_date','net_cost','gst','total_cost', 
-            'is_active', 'items'
+            'is_active', 'items','payment_details'
         ]
 
     def get_items(self, obj):
@@ -55,5 +56,20 @@ class OrderSerializer(serializers.ModelSerializer):
                 'gst_no': obj.customer.gst_no,
             }
         return None  # If customer is missing
-
+    def get_payment_details(self, obj):
+        """Fetch all payments related to this order."""
+        payments = OrderPayment.objects.filter(order_id=obj).order_by('created_at')  # ✅ Get all payments in order
+        if payments.exists():
+            return [
+                {
+                    'total_amount': payment.total_amount,
+                    'balance_amount': payment.balance_amount,
+                    'paid_amount': payment.paid_amount,
+                    'payment_method': payment.payment_method,
+                    'created_at': payment.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'created_by': payment.created_by.username if payment.created_by else None,
+                }
+                for payment in payments
+            ]
+        return []  # ✅ Return empty list if no payments
   

@@ -11,7 +11,7 @@ urlpatterns = [
     path('invoice_list/',InvoiceList.as_view(),name='invoice_list'),
     path('invoices/<str:invoice_id>/', InvoiceView.as_view(), name='invoice-detail'),
     # path("invoice_no_generate/", GetInvoiceNumberAPIView.as_view(), name="invoice_number"),
-    path('c',OrderPaymentDetails.as_view(),name='order_payment_details')
+    path('payment_details/<int:order_id>/',OrderPaymentDetails.as_view(),name='order_payment_details')
   
 
 
