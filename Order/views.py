@@ -262,6 +262,7 @@ class InvoiceList(APIView):
                 while f'items[{index}][name]' in request.data:
                     try:
                         item_name = request.data.get(f'items[{index}][name]')
+                        model_id=request.data.get(f'items[{index}][model]')
                         material_id = request.data.get(f'items[{index}][material]')
                         print_type_id = request.data.get(f'items[{index}][print_type]')
                         sleeve_case = request.data.get(f'items[{index}][sleeve_case]', False)
@@ -272,6 +273,7 @@ class InvoiceList(APIView):
 
                         item_obj = Item.objects.filter(
                             name=item_name,
+                            model=model_id,
                             material_id=material_id,
                             print_type_id=print_type_id,
                             is_sleeve=sleeve_case
