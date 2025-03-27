@@ -388,6 +388,7 @@ class CreateOrderAPIView(APIView):
                         print_type_id = request.data.get(f'items[{index}][print_type]')
                         sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
                         discount = request.data.get(f'items[{index}][discount]')
+                        total_item_cost=request.data.get(f'items[{index}][total_item_cost]')
                         size = request.data.get(f'items[{index}][size]')
                         qty = request.data.get(f'items[{index}][qty]')
 
@@ -440,6 +441,7 @@ class CreateOrderAPIView(APIView):
                             item=item_obj,
                             size=size,
                             discount=discount,
+                            total_item_cost=total_item_cost,
                             qty=int(qty),
                             sleeve_case=sleeve_case
                         )
@@ -553,7 +555,9 @@ class OrderItemUpdateView(APIView):
                     size = request.data.get(f'items[{index}][size]', None)
                     qty = request.data.get(f'items[{index}][qty]', None)
                     sleeve_case = request.data.get(f'items[{index}][sleeve_case]', None)
-
+                    total_item_cost=request.data.get(f'items[{index}][total_item_cost]')
+                    discount = request.data.get(f'items[{index}][discount]')
+                    item_name = request.data.get(f'items[{index}][name]')
                     # ✅ Update OrderItem fields only if new values are provided
                     if model_id:
                         model = get_object_or_404(Model_data, id=model_id)
@@ -565,6 +569,10 @@ class OrderItemUpdateView(APIView):
                         order_item.item.print_type = print_type
                     if size:
                         order_item.size = size
+                    if discount:
+                        order_item.discount=discount
+                    if total_item_cost:
+                        order_item.total_item_cost=total_item_cost
                     if qty:
                         try:
                             order_item.qty = int(qty)
