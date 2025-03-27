@@ -384,6 +384,7 @@ class CreateOrderAPIView(APIView):
                         material_id = request.data.get(f'items[{index}][material]')
                         print_type_id = request.data.get(f'items[{index}][print_type]')
                         sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
+                        discount = request.data.get(f'items[{index}][discount]')
                         size = request.data.get(f'items[{index}][size]')
                         qty = request.data.get(f'items[{index}][qty]')
 
@@ -434,6 +435,7 @@ class CreateOrderAPIView(APIView):
                             order=order,
                             item=item_obj,
                             size=size,
+                            discount=discount,
                             qty=int(qty),
                             sleeve_case=sleeve_case
                         )
