@@ -19,7 +19,7 @@ class OrderSerializer(serializers.ModelSerializer):
         model = Orderdata
         fields = [
             'id', 'orderID', 'customer', 'order_date', 'delivery_date','net_cost','gst','total_cost', 
-            'is_active', 'items','payment_details'
+            'is_active', 'items','payment_details','remarks'
         ]
 
     def get_items(self, obj):

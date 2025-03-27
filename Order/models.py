@@ -27,6 +27,7 @@ class Orderdata(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    remarks = models.TextField(null=True, blank=True)
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Orderdata, on_delete=models.CASCADE, related_name='order_items',null=True,blank=True)

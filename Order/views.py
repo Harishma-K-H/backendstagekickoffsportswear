@@ -353,6 +353,7 @@ class CreateOrderAPIView(APIView):
             customer_id = request.data.get('customer')
             delivery_date = request.data.get('delivery_date')
             net_cost=request.data.get('net_cost')
+            remarks=request.data.get('remarks')
             # Fetch GST percentage from settings (default 5%)
             GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
             if net_cost:
@@ -419,6 +420,7 @@ class CreateOrderAPIView(APIView):
                                 orderID=order_id,
                                 customer=customer,
                                 delivery_date=delivery_date,
+                                remarks=remarks,
                                 net_cost=str(net_cost_decimal),  # Convert Decimal to String
                                 gst=str(gst_value),  # Convert Decimal to String
                                 total_cost=str(total_cost),  # Convert Decimal to String
@@ -505,12 +507,15 @@ class OrderItemUpdateView(APIView):
             customer_name = request.data.get('customer', None)
             # total_price = request.data.get('total_price', None)
             net_cost=request.data.get('net_cost', None)
+            remarks=request.data.get('remarks',None)
             # gst=request.data.get('gst', None)
             if customer_name:
                 customer = get_object_or_404(Customer, id=customer_name)
 
             if delivery_date:
                 order.delivery_date = delivery_date
+            if remarks:
+                order.remarks=remarks
             if customer_name:
                 order.customer = customer
             GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
