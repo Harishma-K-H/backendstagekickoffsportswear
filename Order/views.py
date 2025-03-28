@@ -128,6 +128,7 @@ class InvoiceView(APIView):
                     "item_id": item.item.id,
                     "name": item.item.name,
                     "size": item.size,
+                    'discount':item.discount,
                     "qty": item.qty,
                     "sleeve_case": item.item.is_sleeve,
                     "material": item.item.material.name,
@@ -156,14 +157,15 @@ class InvoiceList(APIView):
     def get(self, request, *args, **kwargs):
         order_id = request.query_params.get('order_id')
         customer_id = request.query_params.get('customer_id')
+        invoice=Invoice.objects.all().order_by('-id')
 
         # ✅ Filter invoices based on parameters
         if order_id:
-            invoices = Invoice.objects.filter(order_id=order_id)
+            invoices = invoice.filter(order_id=order_id)
         elif customer_id:
-            invoices = Invoice.objects.filter(customer_id=customer_id)
+            invoices = invoice.filter(customer_id=customer_id)
         else:
-            invoices = Invoice.objects.all()  # Fetch all invoices if no filters are provided
+            invoices = invoice.all()  # Fetch all invoices if no filters are provided
 
         # ✅ Apply Pagination
         paginator = CustomPagination()
@@ -186,10 +188,16 @@ class InvoiceList(APIView):
                 "gst": str(invoice.gst),
                 "total_cost": str(invoice.total_cost),
                 "created_at": invoice.created_at,
+                "created_by":{
+                    'id':request.user.id,
+                    'name':request.user.get_full_name()
+                },
                 "items": [
                     {
                         "item_id": item.item.id,
                         "name": item.item.name,
+                        'unit_cost':item.item.item_cost,
+                        "discount":item.discount,
                         "size": item.size,
                         "qty": item.qty,
                         "sleeve_case": item.sleeve_case,
@@ -338,7 +346,7 @@ class CreateOrderAPIView(APIView):
                 return Response({"error": "Order not found"}, status=status.HTTP_404_NOT_FOUND)
         else:
 
-            orders = Orderdata.objects.all()
+            orders = Orderdata.objects.all().order_by('-id')
             paginator = CustomPagination()
             paginated_orders = paginator.paginate_queryset(orders, request)
             serializer = OrderSerializer(paginated_orders, many=True)
@@ -720,8 +728,47 @@ class OrderPaymentAPI(APIView):
         if balance_amount == 0 or total_amount == paid_amount:
             order.Completed_payment = True
             order.save()  # Ensure order is updated in the database
+            # create the invoice
+            if Invoice.objects.filter(order=order).exists():
+                return Response({"error": "Invoice already exists for this order."}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({'message': 'Payment Successful'}, status=status.HTTP_201_CREATED)
+                # Generate invoice ID
+            invoice_id = generate_invoice_id()  # Function to create unique invoice ID
+
+            # Calculate GST and total cost
+            # GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
+            # gst_value = (Decimal(GST_PERCENTAGE) / 100) * total_amount
+            # total_cost = total_amount + gst_value
+
+            # Create Invoice
+            invoice = Invoice.objects.create(
+                    invoice_id=invoice_id,
+                    order=order,
+                    customer=order.customer,
+                    delivery_date=order.delivery_date,
+                    net_cost=order.net_cost,
+                    gst=order.gst,
+                    total_cost=order.total_cost,
+                    created_by=request.user
+                )
+
+            order_items = OrderItem.objects.filter(order=order)
+            if not order_items.exists():
+                return Response({"error": "No items found for this order."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Process each order item and create invoice items
+            for order_item in order_items:
+                InvoiceItem.objects.create(
+                    invoice=invoice,
+                    item=order_item.item,
+                    size=order_item.size,
+                    qty=order_item.qty,
+                    sleeve_case=order_item.sleeve_case
+                )
+        return Response({
+            "message": "Payment Successful, Invoice Created!",
+            "invoice_id": invoice_id
+        }, status=status.HTTP_201_CREATED)
 class OrderPaymentDetails(APIView):
     def get(self, request, order_id):
         # Fetch payment details for the given order_id
