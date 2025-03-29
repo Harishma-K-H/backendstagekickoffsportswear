@@ -676,13 +676,9 @@ class ItemCostView(APIView):
         model = request.query_params.get('model')
         material = request.query_params.get('material')
         print_type = request.query_params.get('print_type')
-        sleeve_case = request.query_params.get('sleevecase')
+        sleeve_case = request.query_params.get('sleevecase')  # Keep it as a string
 
         print(f"Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
-
-        # Convert sleeve_case to boolean
-        if sleeve_case is not None:
-            sleeve_case = sleeve_case.lower() == "true"
 
         # Fetch the item matching the given criteria
         item = Item.objects.filter(model=model, material_id=material, print_type_id=print_type).first()
@@ -698,8 +694,10 @@ class ItemCostView(APIView):
             "cost": item.item_cost
         }
 
-        # Check sleeve condition
-        if item.is_sleeve == sleeve_case:
-            return Response(item_data, status=status.HTTP_200_OK)
+        # Check sleeve_case condition
+        if sleeve_case:  # Only check if it's provided
+            if item.is_sleeve == sleeve_case:
+                return Response(item_data, status=status.HTTP_200_OK)
+            return Response({"error": "Sleeve case mismatch"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(item_data, status=status.HTTP_200_OK)
