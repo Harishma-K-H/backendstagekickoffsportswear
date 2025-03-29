@@ -14,13 +14,15 @@ class OrderSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
     payment_details = serializers.SerializerMethodField()
+    created_by=serializers.SerializerMethodField()
 
     class Meta:
         model = Orderdata
         fields = [
             'id', 'orderID', 'customer', 'order_date', 'delivery_date','net_cost','gst','total_cost', 
-            'is_active', 'items','payment_details','remarks'
+            'is_active', 'items','payment_details','remarks','created_by'
         ]
+
 
     def get_items(self, obj):
         order_items = obj.order_items.all()  # Fetch related OrderItem objects
@@ -73,4 +75,11 @@ class OrderSerializer(serializers.ModelSerializer):
                 for payment in payments
             ]
         return []  # ✅ Return empty list if no payments
-  
+    def get_created_by(self, obj):
+        if obj.created_by and isinstance(obj.created_by, User):  # Ensure it's a User instance
+            return {
+                'id': obj.created_by.id,  # ✅ Get User ID as an integer
+                'name': obj.created_by.get_full_name(),  # ✅ Fetch full name
+                'branch':obj.created_by.branch.name if obj.created_by.branch else None
+            }
+        return None 

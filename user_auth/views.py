@@ -441,6 +441,7 @@ class ItemView(APIView):
                     "name": item.name if item.name else None,
                     "model":item.model.name if item.model else None,
                     "item_cost": float(item.item_cost),  # Convert Decimal to float
+                    "material_id": item.material.id if item.material else None, 
                     "material": item.material.name if item.material else None,  # Avoid NoneType error
                     "print_type": item.print_type.name if item.print_type else None,
                     "size": item.size,
@@ -462,6 +463,9 @@ class ItemView(APIView):
                 "item_code": item.item_code,
                 "item_cost": float(item.item_cost),  # Convert Decimal to float
                 "item_alert": item.item_alert,
+                "material_id": item.material.id if item.material else None, 
+                "model_id":item.model.id if item.model else None,
+                "print_type_id":item.print_type.id if item.print_type else None,
                 "material": item.material.name if item.material else None,  # Avoid NoneType error
                 "gst": float(item.gst) if item.gst else None,
                 "tax": float(item.tax) if item.tax else None,

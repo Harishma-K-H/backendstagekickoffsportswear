@@ -28,6 +28,7 @@ class Orderdata(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     remarks = models.TextField(null=True, blank=True)
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_order")
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Orderdata, on_delete=models.CASCADE, related_name='order_items',null=True,blank=True)
@@ -61,7 +62,7 @@ class Invoice(models.Model):
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # Discount percentage
     gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # GST percentage
     created_at = models.DateTimeField(auto_now_add=True)  # Timestamp when invoice is created
-    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True)
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_invoice")
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
     net_cost=models.CharField(max_length=30,null=True,blank=True)
     delivery_date = models.DateField(null=True, blank=True)

@@ -133,6 +133,7 @@ class InvoiceView(APIView):
                     "item_id": item.item.id,
                     "name": item.item.name,
                     "model":item.item.model.name,
+                    'item_cost':item.item.item_cost,
                     "size": item.size,
                     'discount':item.discount,
                     "qty": item.qty,
@@ -185,7 +186,7 @@ class InvoiceList(APIView):
                 "invoice_id": invoice.invoice_id,
                 "order_id": invoice.order_id,
                 'orderID': invoice.order.orderID,
-                "customer_id":{'custom_id': invoice.order.customer.id,
+                "customer":{'custom_id': invoice.order.customer.id,
                         'email': invoice.order.customer.email,
                         'phn': invoice.order.customer.mobile_number1,
                         "name": invoice.order.customer.name,
@@ -351,6 +352,7 @@ class CreateOrderAPIView(APIView):
 
     def get(self, request, order_id=None):
         # q_data=request.query_params.get()
+        user=request.user
         if order_id:
             try:
                 order = Orderdata.objects.get(orderID=order_id)
@@ -361,6 +363,10 @@ class CreateOrderAPIView(APIView):
         else:
 
             orders = Orderdata.objects.all().order_by('-id')
+            if user.role.name=="Admin":
+                orders=orders.all()
+            else:
+                orders = orders.filter(created_by__branch__id=user.branch.id)
             paginator = CustomPagination()
             paginated_orders = paginator.paginate_queryset(orders, request)
             serializer = OrderSerializer(paginated_orders, many=True)
@@ -452,7 +458,8 @@ class CreateOrderAPIView(APIView):
                                 front_img=request.FILES.get('front_img'),
                                 back_matter=request.data.get('back_matter'),
                                 back_img=request.FILES.get('back_img'),
-                                status="Pending"
+                                status="Pending",
+                                created_by=request.uesr
                             )
                             valid_item_found = True  # Flag to indicate that order is now created
                             print(f"✅ Order Created: {order.orderID}")
@@ -781,7 +788,7 @@ class OrderPaymentAPI(APIView):
                 )
         return Response({
             "message": "Payment Successful, Invoice Created!",
-            "invoice_id": invoice_id
+            # "invoice_id": invoice_id
         }, status=status.HTTP_201_CREATED)
 class OrderPaymentDetails(APIView):
     def get(self, request, order_id):

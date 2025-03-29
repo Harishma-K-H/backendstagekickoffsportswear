@@ -74,7 +74,7 @@ class User(AbstractUser):
     dob = models.DateField(blank=True, null=True)
     address = models.CharField(max_length=255, null=True, blank=True)
     age = models.CharField(max_length=35, null=True, blank=True)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True,null=True,blank=True)
     mobile_number = models.CharField(max_length=15, unique=True,null=True,blank=True)
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, null=True, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -82,7 +82,7 @@ class User(AbstractUser):
     pro_pic = models.FileField(upload_to=get_pro_pic_upload_path, blank=True, null=True)
     role = models.ForeignKey(UserRole, on_delete=models.CASCADE, null=True, blank=True)
     is_active = models.BooleanField(default=True)
-
+ 
     # Fix reverse accessor clashes
     # groups = models.ManyToManyField(Group, related_name="custom_user_groups", blank=True)
     # user_permissions = models.ManyToManyField(Permission, related_name="custom_user_permissions", blank=True)
@@ -135,6 +135,7 @@ class Customer(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_customer")
     def save(self, *args, **kwargs):
         if not self.custom_id:  # Generate only if not already set
             self.custom_id = self.generate_unique_custom_id()
@@ -200,7 +201,7 @@ class Item(models.Model):
     item_cost = models.DecimalField(max_digits=10, decimal_places=2)
     item_alert = models.IntegerField(null=True, blank=True)
     model=models.ForeignKey(Model_data, on_delete=models.CASCADE,null=True,blank=True)
-    material = models.ForeignKey(MaterialData,on_delete=models.CASCADE,null=True, blank=True)
+    material = models.ForeignKey(Material,on_delete=models.CASCADE,null=True, blank=True)
     gst = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     tax = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     print_type = models.ForeignKey(PrintType,on_delete=models.CASCADE, null=True, blank=True)
@@ -208,10 +209,11 @@ class Item(models.Model):
     
     is_sleeve = models.CharField(max_length=20, choices=SLEEVE_CHOICES, null=True,blank=True)
 
-    item_description = models.TextField()
+    item_description = models.TextField(null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_item")
 
     def __str__(self):
         return f"{self.id} - {self.name} ({self.get_is_sleeve_display()})"

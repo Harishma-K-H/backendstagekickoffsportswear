@@ -3,7 +3,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 class CustomPagination(PageNumberPagination):
-    page_size = 2  # Default page size
+    page_size = 20 # Default page size
     page_number_query_param = 'pageNumber'  # Use 'pageNumber' instead of 'page'
     page_size_query_param = 'pageSize'  # Allow changing page size dynamically
     max_page_size = 100
