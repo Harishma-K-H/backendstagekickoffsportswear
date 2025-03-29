@@ -459,7 +459,7 @@ class CreateOrderAPIView(APIView):
                                 back_matter=request.data.get('back_matter'),
                                 back_img=request.FILES.get('back_img'),
                                 status="Pending",
-                                created_by=request.uesr
+                                created_by=request.user
                             )
                             valid_item_found = True  # Flag to indicate that order is now created
                             print(f"✅ Order Created: {order.orderID}")
