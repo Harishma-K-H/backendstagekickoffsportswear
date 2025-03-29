@@ -672,20 +672,43 @@ class ModelMaterialList(APIView):
 
 class ItemCostView(APIView):
     def get(self, request):
-        # Get parameters from query_params (for GET requests)
         model = request.query_params.get('model')
         material = request.query_params.get('material')
         print_type = request.query_params.get('print_type')
-        sleeve_case = request.query_params.get('sleevecase')  # Keep it as a string
+        sleeve_case = request.query_params.get('sleevecase')
 
-        print(f"Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
+        print(f"🔍 Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
 
-        # Fetch the item matching the given criteria
-        item = Item.objects.filter(model=model, material_id=material, print_type_id=print_type).first()
+        # Check if Model exists
+        if not Item.objects.filter(model=model).exists():
+            return Response({"error": "Model not found in database"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check if item exists
+        # Check if Material exists
+        if not Item.objects.filter(material_id=material).exists():
+            return Response({"error": "Material not found in database"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if Print Type exists
+        if not Item.objects.filter(print_type_id=print_type).exists():
+            return Response({"error": "Print type not found in database"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Prepare filter criteria
+        filter_criteria = {
+            "model": model,
+            "material_id": material,
+            "print_type_id": print_type,
+        }
+
+        # Only add sleeve_case to filter if it's not empty or 'undefined'
+        if sleeve_case and sleeve_case.lower() != "undefined":
+            filter_criteria["is_sleeve"] = sleeve_case
+
+        print(f"🔍 Filter Criteria: {filter_criteria}")
+
+        # Fetch item with given criteria
+        item = Item.objects.filter(**filter_criteria).first()
+
         if not item:
-            return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Model not match"}, status=status.HTTP_404_NOT_FOUND)
 
         # Prepare response data
         item_data = {
@@ -693,11 +716,5 @@ class ItemCostView(APIView):
             "name": item.name,
             "cost": item.item_cost
         }
-
-        # Check sleeve_case condition
-        if sleeve_case:  # Only check if it's provided
-            if item.is_sleeve == sleeve_case:
-                return Response(item_data, status=status.HTTP_200_OK)
-            return Response({"error": "Sleeve case mismatch"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(item_data, status=status.HTTP_200_OK)

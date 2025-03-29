@@ -82,6 +82,7 @@ class InvoiceItem(models.Model):
     size = models.CharField(max_length=50,null=True,blank=True)
     qty = models.PositiveIntegerField(null=True,blank=True)
     discount=models.CharField(max_length=50,null=True,blank=True)
+    total_item_cost=models.CharField(max_length=50,null=True,blank=True)
     sleeve_case = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)

@@ -136,6 +136,7 @@ class InvoiceView(APIView):
                     'item_cost':item.item.item_cost,
                     "size": item.size,
                     'discount':item.discount,
+                    "total_item_cost":item.total_item_cost,
                     "qty": item.qty,
                     "sleeve_case": item.item.is_sleeve,
                     "material": item.item.material.name,
@@ -212,6 +213,7 @@ class InvoiceList(APIView):
                         "name": item.item.name,
                         'modal':item.item.model.name,
                         'unit_cost':item.item.item_cost,
+                        'total_item_cost':item.total_item_cost,
                         "discount":item.discount,
                         "size": item.size,
                         "qty": item.qty,
@@ -782,6 +784,7 @@ class OrderPaymentAPI(APIView):
                 InvoiceItem.objects.create(
                     invoice=invoice,
                     item=order_item.item,
+                    total_item_cost=order_item.total_item_cost,
                     size=order_item.size,
                     qty=order_item.qty,
                     sleeve_case=order_item.sleeve_case
