@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.env
+.env.*
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# Logs
+logs/
+
+# Migrations cache
+**/migrations/__pycache__/
+
+# System files
+*.log
+*.pid
+*.save
+
+# Database backups
+*.sql
+*.dump
+
+# CSV / temp files
+*.csv
+
+# SSH keys
+authorized_key
+authorized_key.pub
+
+# Node / PM2
+ecosystem.config.js
+
+# IDE
+.vscode/
+.idea/
+# Embedded repo
+new_kickoff/

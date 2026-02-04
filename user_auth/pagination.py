@@ -3,40 +3,43 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 class CustomPagination(PageNumberPagination):
-    page_size = 20 # Default page size
-    page_number_query_param = 'pageNumber'  # Use 'pageNumber' instead of 'page'
-    page_size_query_param = 'pageSize'  # Allow changing page size dynamically
-    max_page_size = 100
+    page_size = 20  # Default fallback
+    page_number_query_param = 'pageNumber'
+    page_size_query_param = 'pageSize'
+    max_page_size = 200
 
     def get_page_number(self, request, paginator):
-        """
-        Override to use 'pageNumber' instead of 'page'
-        """
         try:
             return int(request.query_params.get(self.page_number_query_param, 1))
         except ValueError:
-            return 1  # Default to page 1 if invalid pageNumber is given
+            return 1
 
     def get_page_size(self, request):
-        """
-        Override to fetch 'pageSize' dynamically instead of using a fixed value
-        """
+        # Optional override for special filters
+        if request.query_params.get('branch_search'):
+            return 160
         try:
-            return int(request.query_params.get(self.page_size_query_param, self.page_size))
+            page_size = int(request.query_params.get(self.page_size_query_param, self.page_size))
+            return min(page_size, self.max_page_size)
         except (ValueError, TypeError):
-            return self.page_size  # Fallback to default page size
+            return self.page_size
+
+    def paginate_queryset(self, queryset, request, view=None):
+        self.request = request
+        self.page_size = self.get_page_size(request)  # ✅ set it here before paginate
+        return super().paginate_queryset(queryset, request, view)
 
     def get_paginated_response(self, data):
         total_items = self.page.paginator.count
-        page_size = self.get_page_size(self.request)  # Fetch dynamic page size
-        total_pages = math.ceil(total_items / page_size) if total_items > 0 else 1
+        total_pages = math.ceil(total_items / self.page_size) if total_items > 0 else 1
 
         return Response({
             "count": total_items,
             "hasPreviousPage": self.page.has_previous(),
             "hasNextPage": self.page.has_next(),
             "pageNumber": self.page.number,
-            "pageSize": page_size,
+            "pageSize": self.page_size,
             "totalPages": total_pages,
             "results": data
         })
+

@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .models import Branch,User,Customer,Material,PrintType,Model_data,Item,UserRole,MaterialData,District
-from .serializers import BranchSerializer,CustomTokenObtainPairSerializer,UserRoleSerializer,MaterialDataSerializer,UserSerializer,CustomerSerializer,PrintTypeSerializer,MaterialSerializer,ModelDataSerializer
+from .models import Branch,User,Customer,Material,PrintType,Model_data,Item,UserRole,MaterialData,District,State
+from .serializers import BranchSerializer,CustomTokenObtainPairSerializer,UserRoleSerializer,MaterialDataSerializer,UserSerializer,CustomerSerializer,StateSerializer,PrintTypeSerializer,MaterialSerializer,ModelDataSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import AllowAny 
 from rest_framework import permissions,generics
@@ -129,19 +129,41 @@ class UserDetailView(APIView):
         user.save()
         return Response({"message": "User deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 class BranchView(APIView):
-    # 🔹 GET: Retrieve all branches
     def get(self, request):
-        branches = Branch.objects.filter(is_active=True)  # Get only active branches
+        q_data = request.query_params.get('data')
+        print("🔍 Query Param:", q_data)  # Debug print
+
+        branches = Branch.objects.filter(is_active=True)
+
+        if q_data and q_data.lower() == "branch_list":
+            data = [
+                {
+                    "id": branch.id,
+                    "name": branch.name,
+                    "code": branch.code
+                }
+                for branch in branches
+            ]
+            return Response(data, status=status.HTTP_200_OK)
+
         serializer = BranchSerializer(branches, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # 🔹 POST: Create a new branch
     def post(self, request):
+        print("request.data",request.data)
         serializer = BranchSerializer(data=request.data)
+        is_active=True
         if serializer.is_valid():
-            serializer.save()
+            serializer.save(is_active=is_active)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class StateList(APIView):
+    def get(self, request):
+        states = State.objects.filter(is_active=True)
+        serializer = StateSerializer(states, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class BranchDetailView(APIView):
 
@@ -180,19 +202,27 @@ class CustomerListCreateAPIView(APIView):
         q_search=request.query_params.get('search')
         q_data=request.query_params.get('data')
         if q_data=="customer_list":
-            customers = Customer.objects.filter(deleted_at__isnull=True).values(
-                'id', 'custom_id', 'name', 'mobile_number1','address1','address2', 'email'
+            customers = Customer.objects.filter(is_active=True).values(
+                'id', 'custom_id', 'name', 'mobile_number1','address1','address2','address3', 'email','business_name','gst_no','mobile_number2','state__name'
             )
             if q_search:
                 customers = customers.filter(
                     Q(custom_id__icontains=q_search) | 
-                    Q(name__icontains=q_search) | 
+                    Q(name__icontains=q_search) |
+                    Q(business_name__icontains=q_search)| 
                     Q(gst_no__icontains=q_search)
                     )
 
             return Response(list(customers), status=status.HTTP_200_OK)
         else:
-            customers = Customer.objects.all()
+            customers = Customer.objects.all().order_by('-id')
+            if q_search:
+                customers = customers.filter(
+                    Q(custom_id__icontains=q_search) | 
+                    Q(name__icontains=q_search) |
+                    Q(business_name__icontains=q_search)| 
+                    Q(gst_no__icontains=q_search)
+                    )
             paginator = CustomPagination()
             paginated_customer = paginator.paginate_queryset(customers, request)
             # customers = Customer.objects.filter(deleted_at__isnull=True)
@@ -224,12 +254,35 @@ class CustomerDetailAPIView(APIView):
 
     def put(self, request, customer_id):
         customer = self.get_object(customer_id)
-        serializer = CustomerSerializer(customer, data=request.data, partial=False)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        data = request.data
+
+        try:
+            customer.name = data.get('name', customer.name)
+            customer.business_name = data.get('business_name', customer.business_name)
+            customer.address1 = data.get('address1', customer.address1)
+            customer.address2 = data.get('address2', customer.address2)
+            customer.address3 = data.get('address3', customer.address3)
+            customer.pincode = data.get('pincode', customer.pincode)
+            customer.mobile_number1 = data.get('mobile_number1', customer.mobile_number1)
+            customer.mobile_number2 = data.get('mobile_number2', customer.mobile_number2)
+            customer.email = data.get('email', customer.email)
+            customer.gst_no = data.get('gstn', customer.gst_no)
+
+            # If you're sending state as ID
+            if data.get('state'):
+                customer.state_id = data['state']
+
+            customer.save()
+            # log_user_activity(request, f"Customer {customer.custom_id} updated successfully")
+
+            return Response({
+                "message": "Customer updated successfully",
+                "customer_id": customer.id
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     def patch(self, request, customer_id):
         customer = self.get_object(customer_id)
         serializer = CustomerSerializer(customer, data=request.data, partial=True)
@@ -387,9 +440,18 @@ class MaterialDetailAPIView(APIView):
 
 class PrintTypeListCreateAPIView(APIView):
     def get(self, request):
+        model_id = request.query_params.get('model_id')
+        if model_id:
+            try:
+                model_id = int(model_id)  # Convert to int for correct filtering
+                print_type_list = list(PrintType.objects.filter(model_id=model_id).values("id", "name"))
+                return Response(print_type_list, status=status.HTTP_200_OK)
+            except ValueError:
+                return Response({"error": "Invalid model_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # If no model_id is passed, return all
         print_type_list = list(PrintType.objects.values("id", "name"))
-        return Response(print_type_list, status=status.HTTP_200_OK)
-        
+        return Response(print_type_list, status=status.HTTP_200_OK)        
 
     def post(self, request):
         serializer = PrintTypeSerializer(data=request.data)
@@ -431,71 +493,122 @@ class PrintTypeDetailAPIView(APIView):
         return Response({"message": "Print Type deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 class ItemView(APIView):
     def get(self, request):
-        items = Item.objects.filter(is_active=True)  # Fetch only active items
-        q_data=request.query_params.get('data')
-        if q_data=="item_list":
+        user = request.user
+        branch_search = request.query_params.get('branch_search')
+        itemcode_search = request.query_params.get('itemcode_search')
+        print_type_search = request.query_params.get('print_type_search')
+        material_search = request.query_params.get('material_search')
+        model_search = request.query_params.get('model_search')
+        q_data = request.query_params.get('data')
+
+        # Base queryset
+        if user.role.name == "Admin":
+            items = Item.objects.filter().order_by('-created_at')
+        else:
+            items = Item.objects.filter(Q(created_by__branch=user.branch) |
+                                        Q(branch=user.branch)
+            ).order_by('-created_at')
+
+        # Optional filtering
+        if itemcode_search:
+            items = items.filter(item_code__icontains=itemcode_search)
+        if print_type_search:
+            items = items.filter(print_type__name__icontains=print_type_search)
+        if material_search:
+            items = items.filter(material__name__icontains=material_search)
+        if model_search:
+            items = items.filter(model__id__icontains=model_search)
+        if branch_search:
+            items = items.filter(Q(created_by__branch__name__icontains=branch_search)|Q(branch__id=branch_search))
+
+        # If just list (no pagination required)
+        if q_data == "item_list":
             item_list = []
             for item in items:
                 item_list.append({
                     "id": item.id,
-                    "name": item.name if item.name else None,
-                    "model":item.model.name if item.model else None,
-                    "item_cost": float(item.item_cost),  # Convert Decimal to float
-                    "material_id": item.material.id if item.material else None, 
-                    "material": item.material.name if item.material else None,  # Avoid NoneType error
+                    "name": item.name,
+                    "model_name": item.model.name if item.model else None,
+                    "item_cost": float(item.item_cost),
+                    "branch": {
+                    'id': item.branch.id if item.branch else None,
+                    'name': item.branch.name if item.branch else None,
+                    'code': item.branch.code if item.branch else None
+                    },
+                    "material_id": item.material.id if item.material else None,
+                    "material": item.material.name if item.material else None,
                     "print_type": item.print_type.name if item.print_type else None,
                     "size": item.size,
                     "is_sleeve": item.is_sleeve,
-
                 })
-
             return Response(item_list, status=status.HTTP_200_OK)
-        
-        # Apply pagination
+
+        # Paginated item list
         paginator = CustomPagination()
         paginated_items = paginator.paginate_queryset(items, request)
+
         item_list = []
         for item in paginated_items:
             item_list.append({
                 "id": item.id,
-                "name": item.name if item.name else None,
-                "model":item.model.name if item.model else None,
+                "name": item.name,
+                "model_name": item.model.name if item.model else None,
                 "item_code": item.item_code,
-                "item_cost": float(item.item_cost),  # Convert Decimal to float
+                "item_cost": float(item.item_cost),
                 "item_alert": item.item_alert,
-                "material_id": item.material.id if item.material else None, 
-                "model_id":item.model.id if item.model else None,
-                "print_type_id":item.print_type.id if item.print_type else None,
-                "material": item.material.name if item.material else None,  # Avoid NoneType error
+                "material": item.material.id if item.material else None,
+                "model": item.model.id if item.model else None,
+                "print_type": item.print_type.id if item.print_type else None,
+                "material_name": item.material.name if item.material else None,
                 "gst": float(item.gst) if item.gst else None,
                 "tax": float(item.tax) if item.tax else None,
-                "print_type": item.print_type.name if item.print_type else None,
+                "print_type_name": item.print_type.name if item.print_type else None,
                 "size": item.size,
-                "is_sleeve": item.is_sleeve,
+                "HSN":item.HSN,
+                "branch": {
+                    'id': item.branch.id if item.branch else None,
+                    'name': item.branch.name if item.branch else None,
+                    'code': item.branch.code if item.branch else None
+                },
+                "sleevecase": item.is_sleeve,
                 "item_description": item.item_description,
                 "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else None,
-
+                'is_active':item.is_active
             })
 
         return paginator.get_paginated_response(item_list)
+
     def post(self, request):
         try:
+            q_data=request.query_params.get('data')
+            branch = None
+            user = request.user
+
+            # Check for Admin user and branch ID
+            if user.role.name == "Admin":
+                branch_id = request.data.get('branch')
+                if not branch_id:
+                    return Response({"error": "Branch ID is required for Admin users."}, status=status.HTTP_400_BAD_REQUEST)
+                branch = get_object_or_404(Branch, id=branch_id)
+            else:
+                branch = user.branch
+            
             # Extract fields from request data
             name = request.data.get("name")
             item_code = request.data.get("item_code")
             item_cost = request.data.get("item_cost")
             item_alert = request.data.get("item_alert")
-            model_id=request.data.get('model')
+            model_id = request.data.get('model')
             material_id = request.data.get("material")
             gst = request.data.get("gst")
             tax = request.data.get("tax")
             print_type_id = request.data.get("print_type")
             size = request.data.get("size")
-            is_sleeve = request.data.get("is_sleeve")
+            is_sleeve = request.data.get("sleevecase")
             item_description = request.data.get("item_description")
-
+            
             # Validate required fields
-            if not all([name, item_code, item_cost, item_description]):
+            if not all([name, item_cost]):
                 return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
 
             # Validate numeric fields
@@ -505,11 +618,44 @@ class ItemView(APIView):
                 tax = Decimal(tax) if tax else None
             except:
                 return Response({"error": "Invalid number format for cost, GST, or tax"}, status=status.HTTP_400_BAD_REQUEST)
-
             # Get related objects
-            model=Model_data.objects.get(id=model_id)if model_id else None 
+            model = Model_data.objects.get(id=model_id) if model_id else None 
             material = Material.objects.get(id=material_id) if material_id else None
             print_type = PrintType.objects.get(id=print_type_id) if print_type_id else None
+            print_type_name=print_type.name
+            # if q_data=="generate_itemcode":
+            base_code = f"{name.strip()[:3].upper()}{print_type_name[0].upper()}"
+            existing_codes = Item.objects.filter(item_code__startswith=base_code).values_list('item_code', flat=True)
+            # Find max serial number
+            serials = []
+            for code in existing_codes:
+                suffix = code.replace(base_code, "")
+                if suffix.isdigit():
+                    serials.append(int(suffix))
+            next_serial = max(serials) + 1 if serials else 1
+            item_code = f"{base_code}{str(next_serial).zfill(3)}"
+            # Check if an item with the same name and other optional fields (material, print_type, is_sleeve) already exists in the same branch
+            filter_kwargs = {
+                'name': name,
+                'branch': branch
+            }
+
+            # Add optional fields to the filter if they are provided
+            if material:
+                filter_kwargs['material'] = material
+            if print_type:
+                filter_kwargs['print_type'] = print_type
+            if is_sleeve is not None:
+                filter_kwargs['is_sleeve'] = is_sleeve
+
+            existing_item = Item.objects.filter(**filter_kwargs).first()
+
+            if existing_item:
+                return Response({
+                    "error": "Item with the same name already exists in this branch.",
+                    "existing_item_id": existing_item.id,
+                    "existing_item_code": existing_item.item_code
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             # Create the Item object
             item = Item.objects.create(
@@ -521,15 +667,19 @@ class ItemView(APIView):
                 material=material,
                 gst=gst,
                 tax=tax,
+                branch=branch,
                 print_type=print_type,
                 size=size,
                 is_sleeve=is_sleeve,
                 item_description=item_description,
             )
             item.save()
+
             # Response data
             return Response({
-                "message": "Item created successfully!"
+                "message": "Item created successfully!",
+                "item_id": item.id,
+                "item_code": item.item_code
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
@@ -551,50 +701,110 @@ class ItemDetailedView(APIView):
                 "tax": float(item.tax) if item.tax else None,
                 "print_type": item.print_type.name if item.print_type else None,
                 "size": item.size,
+                "branch": {
+                    'id': item.branch.id if item.branch else None,
+                    'name': item.branch.name if item.branch else None,
+                    'code': item.branch.code if item.branch else None
+                },
                 "is_sleeve": item.get_is_sleeve_display(),
                 "item_description": item.item_description,
                 "created_at": item.created_at.strftime('%Y-%m-%d %H:%M:%S'),
             }, status=status.HTTP_200_OK)
     def put(self, request, item_id):
         """Update an existing item."""
-        item = get_object_or_404(Item, id=item_id, is_active=True)
-        
+        item = get_object_or_404(Item, id=item_id)
+        q_data=request.query_params.get('status')
+        if q_data == "status_updation":
+            is_active = request.data.get('is_active')
+            if is_active is not None:
+                item.is_active = bool(is_active)
+                item.save()
+                return Response({'message': 'Status updated successfully.'}, status=status.HTTP_200_OK)
+            return Response({'error': 'Missing is_active field.'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            # Extract fields from request data
-            item.name = request.data.get("name", item.name)
-            item.item_code = request.data.get("item_code", item.item_code)
-            item.item_alert = request.data.get("item_alert", item.item_alert)
-            item.size = request.data.get("size", item.size)
-            item.is_sleeve = request.data.get("is_sleeve", item.is_sleeve)
-            item.item_description = request.data.get("item_description", item.item_description)
+            # Extract updated fields
+            name = request.data.get("name", item.name)
+            item_code = request.data.get("item_code", item.item_code)
+            item_alert = request.data.get("item_alert", item.item_alert)
+            size = request.data.get("size", item.size)
+            is_sleeve = request.data.get("is_sleeve", item.is_sleeve)
+            item_description = request.data.get("item_description", item.item_description)
+            branch = request.data.get("branch")
+            if branch:
+                branch=Branch.objects.get(id=branch)
+                item.branch=branch
+            else:
+                branch=None
 
-            # Handle optional decimal fields
-            if "item_cost" in request.data:
-                item.item_cost = Decimal(request.data["item_cost"])
+            item_cost = item.item_cost
+            if "price" in request.data:
+                item_cost = Decimal(request.data["price"])
+
+            gst = item.gst
             if "gst" in request.data:
-                item.gst = Decimal(request.data["gst"]) if request.data["gst"] else None
+                gst = Decimal(request.data["gst"]) if request.data["gst"] else None
+
+            tax = item.tax
             if "tax" in request.data:
-                item.tax = Decimal(request.data["tax"]) if request.data["tax"] else None
+                tax = Decimal(request.data["tax"]) if request.data["tax"] else None
 
-            # Handle optional foreign keys
-            if "material" in request.data:
-                item.material = Material.objects.get(id=request.data["material"]) if request.data["material"] else None
-            if "print_type" in request.data:
-                item.print_type = PrintType.objects.get(id=request.data["print_type"]) if request.data["print_type"] else None
-
+            # Related fields
+            model = item.model
             if "model" in request.data:
-                item.model=Model_data.objects.get(id=request.data["model"]) if request.data['model'] else None
+                model = Model_data.objects.get(id=request.data["model"]) if request.data["model"] else None
+
+            material = item.material
+            if "material" in request.data:
+                material = Material.objects.get(id=request.data["material"]) if request.data["material"] else None
+            else:
+                material=None
+            print_type = item.print_type
+            if "printType" in request.data:
+                print_type = PrintType.objects.get(id=request.data["printType"]) if request.data["printType"] else None
+
+            # Check for duplicates in the same branch
+            duplicate_qs = Item.objects.filter(
+                branch=item.branch,
+                model=model,
+                material=material,
+                print_type=print_type,
+                is_sleeve=is_sleeve
+            ).exclude(id=item.id)
+
+            if duplicate_qs.exists():
+                duplicate_item = duplicate_qs.first()  # ✅ valid now
+                return Response({
+                    "error": "Item with the same model, material, print type, and sleeve option already exists in this branch.",
+                    "existing_item_id": duplicate_item.id,
+                    "existing_item_name": duplicate_item.name,
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Apply updates
+            item.name = name
+            item.item_code = item_code
+            item.item_alert = item_alert
+            item.size = size
+            item.is_sleeve = is_sleeve
+            item.item_description = item_description
+            item.item_cost = item_cost
+            item.gst = gst
+            item.branch=branch
+            item.tax = tax
+            item.model = model
+            item.material = material
+            item.print_type = print_type
 
             item.save()
 
             return Response({
                 "message": "Item updated successfully!",
                 "id": item.id,
-                "name": item.name if item.name else None,
+                "name": item.name,
                 "item_code": item.item_code,
                 "item_cost": float(item.item_cost),
                 "item_alert": item.item_alert,
-                "model":item.model.name if item.model else None,
+                "model": item.model.name if item.model else None,
                 "material": item.material.name if item.material else None,
                 "gst": float(item.gst) if item.gst else None,
                 "tax": float(item.tax) if item.tax else None,
@@ -607,6 +817,7 @@ class ItemDetailedView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+       
 
     def delete(self, request, item_id):
         """Soft delete an item (mark it as inactive)."""
@@ -676,45 +887,50 @@ class ItemCostView(APIView):
         material = request.query_params.get('material')
         print_type = request.query_params.get('print_type')
         sleeve_case = request.query_params.get('sleevecase')
+        branch = request.user.branch
 
         print(f"🔍 Received Params - Model: {model}, Material: {material}, PrintType: {print_type}, SleeveCase: {sleeve_case}")
 
-        # Check if Model exists
+        # Basic checks for required fields
         if not Item.objects.filter(model=model).exists():
             return Response({"error": "Model not found in database"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check if Material exists
-        if not Item.objects.filter(material_id=material).exists():
-            return Response({"error": "Material not found in database"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Check if Print Type exists
         if not Item.objects.filter(print_type_id=print_type).exists():
             return Response({"error": "Print type not found in database"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not Item.objects.filter(branch=branch).exists():
+            return Response({"error": "Branch not found in database"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Prepare filter criteria
         filter_criteria = {
             "model": model,
-            "material_id": material,
             "print_type_id": print_type,
+            "branch": branch
         }
 
-        # Only add sleeve_case to filter if it's not empty or 'undefined'
-        if sleeve_case and sleeve_case.lower() != "undefined":
+        # Handle the 'material' parameter (ensure it's valid)
+        if material and material.lower() not in ['undefined', 'null', '']:
+            if not Item.objects.filter(material_id=material).exists():
+                return Response({"error": "Material not found in database"}, status=status.HTTP_400_BAD_REQUEST)
+            filter_criteria["material_id"] = material
+
+        # Handle the 'sleevecase' parameter (optional)
+        if sleeve_case and sleeve_case.lower() not in ['undefined', 'null', '']:
             filter_criteria["is_sleeve"] = sleeve_case
 
         print(f"🔍 Filter Criteria: {filter_criteria}")
 
-        # Fetch item with given criteria
+        # Fetch the item
         item = Item.objects.filter(**filter_criteria).first()
 
         if not item:
             return Response({"error": "Model not match"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Prepare response data
         item_data = {
             "id": item.id,
             "name": item.name,
-            "cost": item.item_cost
+            "cost": item.item_cost,
+            "item_code": item.item_code
         }
 
         return Response(item_data, status=status.HTTP_200_OK)

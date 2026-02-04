@@ -1,0 +1,6 @@
+[0;1;31m×[0m gunicorn.service - Gunicorn daemon for Django Project
+     Loaded: loaded (/etc/systemd/system/gunicorn.service; enabled; vendor preset: enabled)
+     Active: [0;1;31mfailed[0m (Result: exit-code) since Thu 2025-04-03 11:33:35 UTC; 30ms ago
+    Process: 52911 ExecStart=/home/django/kickoff/venv/bin/gunicorn --name=kickoff --pythonpath=/home/django/kickoff --bind unix:/home/django/gunicorn.socket dressshop.wsgi:application [0;1;31m(code=exited, status=3)[0m
+   Main PID: 52911 (code=exited, status=3)
+        CPU: 357ms

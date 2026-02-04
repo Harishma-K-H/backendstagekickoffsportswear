@@ -25,10 +25,12 @@ SECRET_KEY = 'django-insecure-^nv+fk8c3qbt%eyz2d0uk-^8qu)3qno9_+#+9noz1=6+l4h(4z
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
-CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins (for development only)
+LOGGING_DIR = os.path.join(BASE_DIR, 'logs')  # Define a directory to store logs
+ALLOWED_HOSTS = ['kickoffsportswear.app', 'www.kickoffsportswear.app']
+CORS_ALLOW_ALL_ORIGINS = True # Allow all origins (for development only)
 CORS_ALLOW_CREDENTIALS = True
-
+CSRF_COOKIE_SECURE = True  # Ensures cookies are only sent over HTTPS
+CSRF_COOKIE_SAMESITE = 'Strict'  # Consider setting to 'Strict' for more security in production
 # Application definition
 
 INSTALLED_APPS = [
@@ -42,19 +44,38 @@ INSTALLED_APPS = [
     'Order',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',  # Allow frontend access
     'debug_toolbar',
 ]
-
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(LOGGING_DIR, 'django_error.log'),  # Log file location
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+    },
+}
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    #  'corsheaders.middleware.CorsMiddleware',
     'debug_toolbar.middleware.DebugToolbarMiddleware'
 ]
 
@@ -66,19 +87,31 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
+     ),
+    'DEFAULT_PAGINATION_CLASS': 'user_auth.pagination.CustomPagination',  # 👈 update this with correct import path
+    'PAGE_SIZE': 200  # 👈 fallback if `pageSize` param is missing
 }
 # Allow React frontend (Adjust based on your frontend URL)
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React local server
+    "http://localhost:3000",  # React frontend URL
+    "http://139.59.71.247",   # React local server
+    "https://139.59.71.247",
+    "https://www.kickoffsportswear.app",
+    "https://kickoffsportswear.app",  # Add your domain here
+]
+CSRF_TRUSTED_ORIGINS = [
+    'https://kickoffsportswear.app',
+    'https://www.kickoffsportswear.app',
+    'https://139.59.71.247',  # Keep the HTTPS version only
 ]
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "BLACKLIST_AFTER_ROTATION": False,  # 🔴 Disable token blacklisting
+    "BLACKLIST_AFTER_ROTATION": True,  # Disable token blacklisting
     "ROTATE_REFRESH_TOKENS": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -96,12 +129,12 @@ TEMPLATES = [
 ]
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'KICKOFF',
-        'USER': 'root',
-        'PASSWORD': 'admin',
-        'HOST': 'localhost',  
-        'PORT': '3306',       
+        'ENGINE': 'django.db.backends.postgresql',  # Use PostgreSQL backend
+        'NAME': 'kickoffsportsdb',  # Your database name
+        'USER': 'kickoffsportsuser',  # Your database user
+        'PASSWORD': 'kickoff#@2332ROO',  # Your database password
+        'HOST': 'localhost',  # Host where your database is running
+        'PORT': '5432',  # Default PostgreSQL port
     }
 }
 # REST_FRAMEWORK = {
@@ -160,9 +193,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+

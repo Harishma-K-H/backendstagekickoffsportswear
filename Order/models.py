@@ -1,6 +1,6 @@
 from django.db import models
-from user_auth.models import Item,Customer,User
-
+from user_auth.models import Item,Customer,User,ShippingCustomer
+from django.utils import timezone
 # Create your models here.
 class Orderdata(models.Model):
     ORDER_STATUS = [
@@ -12,9 +12,9 @@ class Orderdata(models.Model):
     orderID = models.CharField(max_length=100, unique=True)
     order_date = models.DateTimeField(auto_now_add=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
-    net_cost=models.CharField(max_length=30,null=True,blank=True)
-    gst=models.CharField(max_length=30,null=True,blank=True)
-    total_cost=models.CharField(max_length=30,null=True,blank=True)
+    net_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    gst = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     delivery_date = models.DateField()
     logo = models.FileField(upload_to='logos/', null=True, blank=True)
     front_matter = models.CharField(max_length=255, null=True, blank=True)
@@ -22,8 +22,16 @@ class Orderdata(models.Model):
     back_matter = models.CharField(max_length=255, null=True, blank=True)
     back_img = models.FileField(upload_to='back_images/', null=True, blank=True)
     Completed_payment=models.BooleanField(default=False)
+    parcel=models.CharField(max_length=100,null=True,blank=True)
+    shipped_customer = models.ForeignKey(ShippingCustomer, on_delete=models.SET_NULL, null=True, blank=True, related_name="shipped_orders"
+    )
     invoice_flag=models.BooleanField(default=False)
+    invoice_id=models.CharField(max_length=150,null=True,blank=True,unique=True)
+    qr_code = models.FileField(upload_to='invoice_qr/', null=True, blank=True) 
+    discount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     status=models.CharField(max_length=100,choices=ORDER_STATUS,default="Pending",null=True,blank=True)
+    order_invoice=models.CharField(max_length=100,null=True,blank=True,default="PENDING")
+    order_invoice_sent_date=models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -44,9 +52,10 @@ class OrderItem(models.Model):
 class OrderPayment(models.Model):
     order_id=models.ForeignKey(Orderdata,on_delete=models.CASCADE,null=True,blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
-    total_amount=models.CharField(max_length=100,null=True,blank=True)
-    balance_amount=models.CharField(max_length=100,null=True,blank=True)
-    paid_amount=models.CharField(max_length=100,null=True,blank=True)
+    total_amount=models.CharField(max_length=255,null=True,blank=True)
+    balance_amount=models.CharField(max_length=255,null=True,blank=True)
+    paid_amount=models.CharField(max_length=255,null=True,blank=True)
+    refund_amount = models.CharField(max_length=100, null=True, blank=True)
     payment_method= models.CharField(max_length=100,null=True,blank=True)
     created_at= models.DateTimeField(auto_now_add=True)
     created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="payment_created_by")
@@ -59,13 +68,14 @@ class Invoice(models.Model):
     order = models.ForeignKey(Orderdata, on_delete=models.CASCADE,null=True,blank=True)  # Link to the Order
     order_item_id= models.ForeignKey(OrderItem, on_delete=models.CASCADE,null=True,blank=True)
     total_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # Cost with decimals
-    discount = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # Discount percentage
-    gst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  # GST percentage
-    created_at = models.DateTimeField(auto_now_add=True)  # Timestamp when invoice is created
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00) 
+    gst = models.DecimalField(max_digits=100, decimal_places=2, default=0.00)  # GST percentage
+    created_at = models.DateTimeField(default=timezone.now, blank=True, null=True)   # Timestamp when invoice is created
     created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_invoice")
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE,null=True,blank=True)
-    net_cost=models.CharField(max_length=30,null=True,blank=True)
+    net_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     delivery_date = models.DateField(null=True, blank=True)
+    invoice_generated = models.BooleanField(default=False)
     logo = models.FileField(upload_to='logos/', null=True, blank=True)
     front_matter = models.CharField(max_length=255, null=True, blank=True)
     front_img = models.FileField(upload_to='front_images/', null=True, blank=True)
@@ -77,8 +87,9 @@ class Invoice(models.Model):
 
 
 class InvoiceItem(models.Model):
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE,null=True,blank=True)  # Link to the Invoice
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE,null=True,blank=True,related_name="invoice_items")  # Link to the Invoice
     item = models.ForeignKey(Item,on_delete=models.CASCADE,null=True,blank=True)  # Reference to the item
+    order_item = models.ForeignKey(OrderItem, on_delete=models.SET_NULL, null=True, blank=True)
     size = models.CharField(max_length=50,null=True,blank=True)
     qty = models.PositiveIntegerField(null=True,blank=True)
     discount=models.CharField(max_length=50,null=True,blank=True)

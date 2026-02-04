@@ -11,13 +11,31 @@ class District(models.Model):
 
     def __str__(self):
         return self.name
+class State(models.Model):
+    name = models.CharField(max_length=255,null=True,blank=True)
+    GSTIN=models.CharField(max_length=255,null=True,blank=True)
+    code=models.CharField(max_length=255,null=True,blank=True)
+    is_active=models.BooleanField(default=True)
+    def __str__(self):
+        return self.name
+
 class Branch(models.Model):
     name = models.CharField(max_length=255, null=True, blank=True)
     code = models.CharField(max_length=255, unique=True)
+    pincode=models.CharField(max_length=100,null=True,blank=True)
+    state=models.CharField(max_length=100,default="KERALA")
+    email=models.CharField(max_length=100,null=True,blank=True)
+    phn_no=models.CharField(max_length=12,null=True,blank=True)
+    GSTN=models.CharField(max_length=100,default="GST01020")
     location = models.TextField(null=True,blank=True)
+    remark = models.TextField(null=True,blank=True)
+    account_details = models.TextField(null=True,blank=True)
+    qr_code = models.FileField(upload_to='qr_codes/', null=True, blank=True)
+    upi_id = models.CharField(max_length=100, null=True, blank=True)
     district=models.CharField(max_length=255,null=True,blank=True)
     city=models.CharField(max_length=255,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    logo=models.FileField(upload_to="logos",null=True,blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
@@ -128,10 +146,13 @@ class Customer(models.Model):
     business_name=models.CharField(max_length=255,null=True,blank=True)
     address1 = models.TextField()
     address2 = models.TextField(blank=True, null=True)
+    address3= models.TextField(blank=True, null=True)
+    pincode=models.CharField(max_length=100,null=True,blank=True)
     mobile_number1 = models.CharField(max_length=15, unique=True)
     mobile_number2 = models.CharField(max_length=15, blank=True, null=True)
-    email = models.EmailField(unique=True, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
     gst_no = models.CharField(max_length=15, blank=True, null=True)
+    state=models.ForeignKey(State,on_delete=models.CASCADE,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -151,7 +172,30 @@ class Customer(models.Model):
                 return new_id
 
     def __str__(self):
+        return self.business_name
+
+class ShippingCustomer(models.Model):
+    custom_id= models.ForeignKey(Customer,on_delete=models.CASCADE,blank=True,null=True,related_name="customer_shipment")
+    name = models.CharField(max_length=255,null=True,blank=True)
+    business_name=models.CharField(max_length=255,null=True,blank=True)
+    address1 = models.TextField()
+    address2 = models.TextField(blank=True, null=True)
+    mobile_number1 = models.CharField(max_length=15, null=True,blank=True)
+    mobile_number2 = models.CharField(max_length=15, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    gst_no = models.CharField(max_length=15, blank=True, null=True)
+    state=models.ForeignKey(State,on_delete=models.CASCADE,null=True,blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_shipment_customer")
+    # def save(self, *args, **kwargs):
+    #     if not self.custom_id:  # Generate only if not already set
+    #         self.custom_id = self.generate_unique_custom_id()
+    #     super().save(*args, **kwargs)
+    def __str__(self):
         return self.name
+
 class Model_data(models.Model):
     name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -181,23 +225,24 @@ class Material(models.Model):
     
 class PrintType(models.Model):
     name = models.CharField(max_length=255)
+    model=models.ForeignKey(Model_data,on_delete=models.CASCADE,null=True,blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.model.name if self.model else 'No Model'}"
 
 
 
 class Item(models.Model):
     SLEEVE_CHOICES = [
-        ('full', 'Full Sleeve'),
-        ('sleeveless', 'Sleeveless'),
-        ('half', 'Half Sleeve'),
+        ('FULL SLEEVE', 'FULL SLEEVE'),
+        ('SLEEVELESS', 'SLEEVELESS'),
+        ('HALF SLEEVE', 'HALF SLEEVE'),
     ]
 
     name = models.CharField(max_length=255,null=True,blank=True)
-    item_code = models.CharField(max_length=100, unique=True)
+    item_code = models.CharField(max_length=100,null=True,blank=True)
     item_cost = models.DecimalField(max_digits=10, decimal_places=2)
     item_alert = models.IntegerField(null=True, blank=True)
     model=models.ForeignKey(Model_data, on_delete=models.CASCADE,null=True,blank=True)
@@ -206,7 +251,8 @@ class Item(models.Model):
     tax = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     print_type = models.ForeignKey(PrintType,on_delete=models.CASCADE, null=True, blank=True)
     size = models.CharField(max_length=50, null=True, blank=True)
-    
+    HSN=models.CharField(max_length=20,null=True,blank=True,default="610990")
+    branch=models.ForeignKey(Branch,on_delete=models.CASCADE,null=True,blank=True,related_name="item_branch")
     is_sleeve = models.CharField(max_length=20, choices=SLEEVE_CHOICES, null=True,blank=True)
 
     item_description = models.TextField(null=True,blank=True)

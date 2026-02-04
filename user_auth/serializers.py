@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Branch,User,Customer,Item,UserRole,PrintType,Material,Menu,MenuAccess,Model_data,MaterialData
+from .models import Branch,User,Customer,Item,UserRole,PrintType,Material,Menu,MenuAccess,Model_data,MaterialData,State
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.hashers import make_password,check_password
 from .permissions import has_permission
@@ -7,6 +7,11 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework import status
 from django.db.models import Q
+
+class StateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = State
+        fields = '__all__'
 
 class UserRoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -38,6 +43,7 @@ class PrintTypeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CustomerSerializer(serializers.ModelSerializer):
+    state_name = serializers.CharField(source='state.name', read_only=True)
     class Meta:
         model = Customer
         fields = '__all__'
@@ -45,8 +51,9 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         """ Check if the email already exists in the database. """
-        if Customer.objects.filter(email=value).exists():
-            raise serializers.ValidationError("A customer with this email already exists.")
+        if value:  # Only perform the check if the email is not empty or None
+            if Customer.objects.filter(email=value).exists():
+                raise serializers.ValidationError("A customer with this email already exists.")
         return value
 
     def validate_mobile_number1(self, value):
@@ -97,10 +104,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'access': str(refresh.access_token),
                 'role': user.role.name if user.role else None,
                 'name': user.get_full_name(),
+                'email':user.email,
                 'branch_id': {
                     'id': user.branch.id if user.branch else None,
                     'name': user.branch.name if user.branch else None,
-                    'code': user.branch.code if user.branch else None
+                    'code': user.branch.code if user.branch else None,
+                    'city':user.branch.city if user.branch else None,
+                    'location':user.branch.location if user.branch else None,
+                    'district':user.branch.district if user.branch else None
                     }
             }
 

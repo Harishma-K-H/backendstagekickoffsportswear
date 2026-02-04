@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import DetailedOrderAPIView,CreateOrderAPIView,GetNextOrderNumberAPIView,OrderPaymentAPI,OrderPaymentDetails,OrderItemUpdateView,InvoiceList,InvoiceView
+from .views import DetailedOrderAPIView,CreateOrderAPIView,GetNextOrderNumberAPIView,OrderPaymentAPI,OrderPaymentDetails,OrderItemUpdateView,InvoiceList,InvoiceView,CustomerDetails,OrderByDeliveryDateAPIView,InvoiceReportAPI
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -9,10 +9,12 @@ urlpatterns = [
     path("api/order_no_generate/", GetNextOrderNumberAPIView.as_view(), name="order_numbers"),
     path('api/payment/',OrderPaymentAPI.as_view(),name='order_payment'),
     path('api/invoice_list/',InvoiceList.as_view(),name='invoice_list'),
-    path('api/invoices/<str:invoice_id>/', InvoiceView.as_view(), name='invoice-detail'),
+    path('api/invoices/<int:invoice_id>/', InvoiceView.as_view(), name='invoice-detail'),
     # path("invoice_no_generate/", GetInvoiceNumberAPIView.as_view(), name="invoice_number"),
-    path('api/payment_details/<int:order_id>/',OrderPaymentDetails.as_view(),name='order_payment_details')
-  
+    path('api/payment_details/<int:order_id>/',OrderPaymentDetails.as_view(),name='order_payment_details'),
+    path('api/customer_details/<int:pk>/',CustomerDetails.as_view(),name="customer_details"),
+    path('api/orders-by-date/', OrderByDeliveryDateAPIView.as_view(), name='orders-by-date'),
+    path('api/invoice_reports/',InvoiceReportAPI.as_view(),name='invoice_report'),  
 
 
 ]
