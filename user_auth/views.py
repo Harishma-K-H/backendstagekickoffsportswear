@@ -199,44 +199,165 @@ class CustomerListCreateAPIView(APIView):
     """
     
     def get(self, request):
-        q_search=request.query_params.get('search')
-        q_data=request.query_params.get('data')
-        if q_data=="customer_list":
-            customers = Customer.objects.filter(is_active=True).values(
-                'id', 'custom_id', 'name', 'mobile_number1','address1','address2','address3', 'email','business_name','gst_no','mobile_number2','state__name'
-            )
+        q_search = request.query_params.get("search")
+        q_data = request.query_params.get("data")
+        user = request.user
+        user_branch_id = str(user.branch.id) if user.branch else None
+
+        # =========================================
+        # CUSTOMER LIST (WITHOUT PAGINATION)
+        # =========================================
+        if q_data == "customer_list":
+
+            # -------- ADMIN --------
+            if user.role and user.role.name == "Admin":
+                customers = Customer.objects.filter(is_active=True)
+
+            # -------- NON-ADMIN --------
+            else:
+                if not user_branch_id:
+                    return Response(
+                        {"error": "User has no branch assigned"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                customers = Customer.objects.filter(
+                    is_active=True
+                ).filter(
+                    Q(branch_ids=user_branch_id) |
+                    Q(branch_ids__startswith=user_branch_id + ",") |
+                    Q(branch_ids__endswith="," + user_branch_id) |
+                    Q(branch_ids__contains="," + user_branch_id + ",")
+                )
+
+            # -------- SEARCH FILTER --------
             if q_search:
                 customers = customers.filter(
-                    Q(custom_id__icontains=q_search) | 
+                    Q(custom_id__icontains=q_search) |
                     Q(name__icontains=q_search) |
-                    Q(business_name__icontains=q_search)| 
+                    Q(business_name__icontains=q_search) |
                     Q(gst_no__icontains=q_search)
-                    )
+                )
+
+            customers = customers.values(
+                "id",
+                "custom_id",
+                "name",
+                "mobile_number1",
+                "mobile_number2",
+                "address1",
+                "address2",
+                "address3",
+                "email",
+                "business_name",
+                "gst_no",
+                "state__name",
+                "branch_ids"
+            )
 
             return Response(list(customers), status=status.HTTP_200_OK)
+
+        # =========================================
+        # CUSTOMER LIST (WITH PAGINATION)
+        # =========================================
         else:
-            customers = Customer.objects.all().order_by('-id')
+
+            # -------- ADMIN --------
+            if user.role and user.role.name == "Admin":
+                customers = Customer.objects.filter(
+                    is_active=True
+                ).order_by("-id")
+
+            # -------- NON-ADMIN --------
+            else:
+                if not user_branch_id:
+                    return Response(
+                        {"error": "User has no branch assigned"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                customers = Customer.objects.filter(
+                    is_active=True
+                ).filter(
+                    Q(branch_ids=user_branch_id) |
+                    Q(branch_ids__startswith=user_branch_id + ",") |
+                    Q(branch_ids__endswith="," + user_branch_id) |
+                    Q(branch_ids__contains="," + user_branch_id + ",")
+                ).order_by("-id")
+
+            # -------- SEARCH FILTER --------
             if q_search:
                 customers = customers.filter(
-                    Q(custom_id__icontains=q_search) | 
+                    Q(custom_id__icontains=q_search) |
                     Q(name__icontains=q_search) |
-                    Q(business_name__icontains=q_search)| 
+                    Q(business_name__icontains=q_search) |
                     Q(gst_no__icontains=q_search)
-                    )
+                )
+
             paginator = CustomPagination()
             paginated_customer = paginator.paginate_queryset(customers, request)
-            # customers = Customer.objects.filter(deleted_at__isnull=True)
             serializer = CustomerSerializer(paginated_customer, many=True)
-            return paginator.get_paginated_response (serializer.data)
+
+            return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
-        user=request.user
-        serializer = CustomerSerializer(data=request.data)
+        user = request.user
+        data = request.data.copy()  # Make mutable copy
+
+        # Check if user is admin
+        is_admin = user.role and user.role.name.lower() == "admin"
+
+        # ===============================
+        # NON-ADMIN USER
+        # ===============================
+        if not is_admin:
+            if not user.branch:
+                return Response(
+                    {"error": "User has no branch assigned"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Force single branch as string
+            data["branch_ids"] = str(user.branch.id)
+
+        # ===============================
+        # ADMIN USER
+        # ===============================
+        else:
+            branch_ids = data.get("branch_ids")
+
+            if not branch_ids:
+                return Response(
+                    {"error": "branch_ids is required for admin"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Normalize input (frontend may send list or string)
+            if isinstance(branch_ids, list):
+                data["branch_ids"] = ",".join(map(str, branch_ids))
+
+            elif isinstance(branch_ids, str):
+                data["branch_ids"] = branch_ids.strip()
+
+        # ===============================
+        # SERIALIZER
+        # ===============================
+        serializer = CustomerSerializer(data=data)
+
         if serializer.is_valid():
-            serializer.save()
+            serializer.save(created_by=user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-     
+
+    #  def post(self, request):
+    #     user=request.user
+    #     serializer = CustomerSerializer(data=request.data)
+    #     if serializer.is_valid():
+    #         serializer.save()
+    #         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class CustomerDetailAPIView(APIView):
@@ -254,8 +375,7 @@ class CustomerDetailAPIView(APIView):
 
     def put(self, request, customer_id):
         customer = self.get_object(customer_id)
-
-        data = request.data
+        data = request.data.copy()  # make mutable
 
         try:
             customer.name = data.get('name', customer.name)
@@ -269,20 +389,43 @@ class CustomerDetailAPIView(APIView):
             customer.email = data.get('email', customer.email)
             customer.gst_no = data.get('gstn', customer.gst_no)
 
-            # If you're sending state as ID
-            if data.get('state'):
-                customer.state_id = data['state']
+            # ===============================
+            # HANDLE BRANCH_IDS (IMPORTANT)
+            # ===============================
+            branch_ids = data.get("branch_ids")
+
+            if branch_ids:
+                # frontend sends [1,2,3]
+                if isinstance(branch_ids, list):
+                    customer.branch_ids = ",".join(map(str, branch_ids))
+
+                # safety: already string "1,2,3"
+                elif isinstance(branch_ids, str):
+                    customer.branch_ids = branch_ids.strip()
+
+            # ===============================
+            # HANDLE STATE
+            # ===============================
+            state_id = data.get('state')
+            if state_id:
+                customer.state_id = state_id
 
             customer.save()
-            # log_user_activity(request, f"Customer {customer.custom_id} updated successfully")
 
-            return Response({
-                "message": "Customer updated successfully",
-                "customer_id": customer.id
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "message": "Customer updated successfully",
+                    "customer_id": customer.id,
+                },
+                status=status.HTTP_200_OK
+            )
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
     def patch(self, request, customer_id):
         customer = self.get_object(customer_id)
         serializer = CustomerSerializer(customer, data=request.data, partial=True)
@@ -522,6 +665,7 @@ class ItemView(APIView):
             items = items.filter(Q(created_by__branch__name__icontains=branch_search)|Q(branch__id=branch_search))
 
         # If just list (no pagination required)
+        # if branch_search or model_search:
         if q_data == "item_list":
             item_list = []
             for item in items:
@@ -536,10 +680,15 @@ class ItemView(APIView):
                     'code': item.branch.code if item.branch else None
                     },
                     "material_id": item.material.id if item.material else None,
+                    "material_name": item.material.name if item.material else None,
                     "material": item.material.name if item.material else None,
                     "print_type": item.print_type.name if item.print_type else None,
+                    "print_type_name": item.print_type.name if item.print_type else None,
                     "size": item.size,
+                    "sleevecase": item.is_sleeve,
+                    "HSN":item.HSN,
                     "is_sleeve": item.is_sleeve,
+                    'is_active':item.is_active
                 })
             return Response(item_list, status=status.HTTP_200_OK)
 

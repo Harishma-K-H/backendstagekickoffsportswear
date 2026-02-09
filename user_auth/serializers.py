@@ -43,27 +43,87 @@ class PrintTypeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CustomerSerializer(serializers.ModelSerializer):
-    state_name = serializers.CharField(source='state.name', read_only=True)
+    print("✅ LOADED CustomerSerializer FROM: user_auth/serializers.py")
+
+    state_name = serializers.CharField(source="state.name", read_only=True)
+    branch_names = serializers.SerializerMethodField()
+
     class Meta:
         model = Customer
-        fields = '__all__'
-        read_only_fields = ['custom_id']  # Ensure custom_id is not required in the request
+        fields = [
+            "id",
+            "name",
+            "business_name",
+            "address1",
+            "address2",
+            "address3",
+            "pincode",
+            "mobile_number1",
+            "mobile_number2",
+            "email",
+            "gst_no",
+            "state",
+            "state_name",
+            "created_by",
+            "branch_ids",      # <-- string: "1,2,3"
+            "branch_names",   # <-- derived from branch_ids
+        ]
 
+        read_only_fields = ["custom_id", "created_by"]
+
+    # =============================
+    # BRANCH NAMES FROM "1,2,3"
+    # =============================
+    def get_branch_names(self, obj):
+        if not obj.branch_ids:
+            return []
+
+        try:
+            ids = [int(i) for i in obj.branch_ids.split(",")]
+            return list(
+                Branch.objects.filter(id__in=ids)
+                .values_list("name", flat=True)
+            )
+        except ValueError:
+            return []
+
+    # =============================
+    # EMAIL VALIDATION
+    # =============================
     def validate_email(self, value):
-        """ Check if the email already exists in the database. """
-        if value:  # Only perform the check if the email is not empty or None
-            if Customer.objects.filter(email=value).exists():
-                raise serializers.ValidationError("A customer with this email already exists.")
+        if value:
+            qs = Customer.objects.filter(email=value)
+            if self.instance:
+                qs = qs.exclude(id=self.instance.id)
+
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "A customer with this email already exists."
+                )
         return value
 
+    # =============================
+    # MOBILE VALIDATION
+    # =============================
     def validate_mobile_number1(self, value):
-        """ Check if the mobile number is exactly 10 digits long and unique. """
         if len(value) != 10:
-            raise serializers.ValidationError("Mobile number must be exactly 10 digits long.")
+            raise serializers.ValidationError(
+                "Mobile number must be exactly 10 digits long."
+            )
         if not value.isdigit():
-            raise serializers.ValidationError("Mobile number must contain only digits.")
-        if Customer.objects.filter(mobile_number1=value).exists():
-            raise serializers.ValidationError("A customer with this mobile number1 already exists.")
+            raise serializers.ValidationError(
+                "Mobile number must contain only digits."
+            )
+
+        qs = Customer.objects.filter(mobile_number1=value)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A customer with this mobile number already exists."
+            )
+
         return value
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     login_identifier = serializers.CharField(write_only=True, required=True)
@@ -105,14 +165,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'role': user.role.name if user.role else None,
                 'name': user.get_full_name(),
                 'email':user.email,
-                'branch_id': {
-                    'id': user.branch.id if user.branch else None,
-                    'name': user.branch.name if user.branch else None,
-                    'code': user.branch.code if user.branch else None,
-                    'city':user.branch.city if user.branch else None,
-                    'location':user.branch.location if user.branch else None,
-                    'district':user.branch.district if user.branch else None
-                    }
+                # 'branch_id': {
+                #     'id': user.branch.id if user.branch else None,
+                #     'name': user.branch.name if user.branch else None,
+                #     'code': user.branch.code if user.branch else None,
+                #     'city':user.branch.city if user.branch else None,
+                #     'location':user.branch.location if user.branch else None,
+                #     'district':user.branch.district if user.branch else None
+                #     }
             }
 
             if user.role.name == 'Admin':
@@ -198,17 +258,17 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id','username','email','branch','role','password','first_name','middle_name','last_name']
-    def get_branch(self,obj):
-        branch_id=obj.branch
-        if branch_id:
-            return {
-                'id':branch_id.id,
-                'name':branch_id.name,
-                'code':branch_id.code,
-                'location':branch_id.location
-            }
-        else:
-            return None
+    # def get_branch(self,obj):
+    #     branch_id=obj.branch
+    #     if branch_id:
+    #         return {
+    #             'id':branch_id.id,
+    #             'name':branch_id.name,
+    #             'code':branch_id.code,
+    #             'location':branch_id.location
+    #         }
+    #     else:
+    #         return None
     def get_role(self,obj):
         role_id=obj.role
         if role_id:

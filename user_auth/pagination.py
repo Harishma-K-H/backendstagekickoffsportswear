@@ -16,7 +16,7 @@ class CustomPagination(PageNumberPagination):
 
     def get_page_size(self, request):
         # Optional override for special filters
-        if request.query_params.get('branch_search'):
+        if request.query_params.get('branch_seaarch'):
             return 160
         try:
             page_size = int(request.query_params.get(self.page_size_query_param, self.page_size))

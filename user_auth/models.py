@@ -157,6 +157,7 @@ class Customer(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_by=models.ForeignKey(User,on_delete=models.CASCADE,null=True,blank=True,related_name="created_by_customer")
+    branch_ids = models.CharField(max_length=255)
     def save(self, *args, **kwargs):
         if not self.custom_id:  # Generate only if not already set
             self.custom_id = self.generate_unique_custom_id()
