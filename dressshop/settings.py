@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-^nv+fk8c3qbt%eyz2d0uk-^8qu)3qno9_+#+9noz1=6+l4h(4z
 DEBUG = True
 
 LOGGING_DIR = os.path.join(BASE_DIR, 'logs')  # Define a directory to store logs
-ALLOWED_HOSTS = ['kickoffsportswear.app', 'www.kickoffsportswear.app']
+ALLOWED_HOSTS = ['*']
 CORS_ALLOW_ALL_ORIGINS = True # Allow all origins (for development only)
 CORS_ALLOW_CREDENTIALS = True
 CSRF_COOKIE_SECURE = True  # Ensures cookies are only sent over HTTPS
@@ -127,14 +127,24 @@ TEMPLATES = [
         },
     },
 ]
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',  # Use PostgreSQL backend
+#         'NAME': 'kickoffsportsdb',  # Your database name
+#         'USER': 'kickoffsportsuser',  # Your database user
+#         'PASSWORD': 'kickoff#@2332ROO',  # Your database password
+#         'HOST': 'localhost',  # Host where your database is running
+#         'PORT': '5432',  # Default PostgreSQL port
+#     }
+# }
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',  # Use PostgreSQL backend
-        'NAME': 'kickoffsportsdb',  # Your database name
-        'USER': 'kickoffsportsuser',  # Your database user
-        'PASSWORD': 'kickoff#@2332ROO',  # Your database password
-        'HOST': 'localhost',  # Host where your database is running
-        'PORT': '5432',  # Default PostgreSQL port
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'kickoffsportsdb',
+        'USER': 'kickoffsportsuser',
+        'PASSWORD': '12345',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 # REST_FRAMEWORK = {
