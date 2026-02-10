@@ -42,11 +42,15 @@ class PrintTypeSerializer(serializers.ModelSerializer):
         model = PrintType
         fields = '__all__'
 
+from rest_framework import serializers
+from user_auth.models import Customer, Branch
+
+
 class CustomerSerializer(serializers.ModelSerializer):
     print("✅ LOADED CustomerSerializer FROM: user_auth/serializers.py")
 
     state_name = serializers.CharField(source="state.name", read_only=True)
-    branch_names = serializers.SerializerMethodField()
+    branch_name = serializers.CharField(source="branch.name", read_only=True)
 
     class Meta:
         model = Customer
@@ -65,27 +69,11 @@ class CustomerSerializer(serializers.ModelSerializer):
             "state",
             "state_name",
             "created_by",
-            "branch_ids",      # <-- string: "1,2,3"
-            "branch_names",   # <-- derived from branch_ids
+            "branch",        # ✅ FK ID
+            "branch_name",   # ✅ readable name
         ]
 
         read_only_fields = ["custom_id", "created_by"]
-
-    # =============================
-    # BRANCH NAMES FROM "1,2,3"
-    # =============================
-    def get_branch_names(self, obj):
-        if not obj.branch_ids:
-            return []
-
-        try:
-            ids = [int(i) for i in obj.branch_ids.split(",")]
-            return list(
-                Branch.objects.filter(id__in=ids)
-                .values_list("name", flat=True)
-            )
-        except ValueError:
-            return []
 
     # =============================
     # EMAIL VALIDATION
@@ -125,6 +113,7 @@ class CustomerSerializer(serializers.ModelSerializer):
             )
 
         return value
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     login_identifier = serializers.CharField(write_only=True, required=True)
     password = serializers.CharField(write_only=True, required=True)

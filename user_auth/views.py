@@ -202,7 +202,7 @@ class CustomerListCreateAPIView(APIView):
         q_search = request.query_params.get("search")
         q_data = request.query_params.get("data")
         user = request.user
-        user_branch_id = str(user.branch.id) if user.branch else None
+        user_branch = user.branch  # ✅ FK object
 
         # =========================================
         # CUSTOMER LIST (WITHOUT PAGINATION)
@@ -215,19 +215,15 @@ class CustomerListCreateAPIView(APIView):
 
             # -------- NON-ADMIN --------
             else:
-                if not user_branch_id:
+                if not user_branch:
                     return Response(
                         {"error": "User has no branch assigned"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
                 customers = Customer.objects.filter(
-                    is_active=True
-                ).filter(
-                    Q(branch_ids=user_branch_id) |
-                    Q(branch_ids__startswith=user_branch_id + ",") |
-                    Q(branch_ids__endswith="," + user_branch_id) |
-                    Q(branch_ids__contains="," + user_branch_id + ",")
+                    is_active=True,
+                    branch=user_branch
                 )
 
             # -------- SEARCH FILTER --------
@@ -252,7 +248,7 @@ class CustomerListCreateAPIView(APIView):
                 "business_name",
                 "gst_no",
                 "state__name",
-                "branch_ids"
+                "branch__name"   # ✅ FK display
             )
 
             return Response(list(customers), status=status.HTTP_200_OK)
@@ -270,19 +266,15 @@ class CustomerListCreateAPIView(APIView):
 
             # -------- NON-ADMIN --------
             else:
-                if not user_branch_id:
+                if not user_branch:
                     return Response(
                         {"error": "User has no branch assigned"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
                 customers = Customer.objects.filter(
-                    is_active=True
-                ).filter(
-                    Q(branch_ids=user_branch_id) |
-                    Q(branch_ids__startswith=user_branch_id + ",") |
-                    Q(branch_ids__endswith="," + user_branch_id) |
-                    Q(branch_ids__contains="," + user_branch_id + ",")
+                    is_active=True,
+                    branch=user_branch
                 ).order_by("-id")
 
             # -------- SEARCH FILTER --------
