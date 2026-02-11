@@ -50,7 +50,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     print("✅ LOADED CustomerSerializer FROM: user_auth/serializers.py")
 
     state_name = serializers.CharField(source="state.name", read_only=True)
-    branch_name = serializers.CharField(source="branch.name", read_only=True)
+    branch_names = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
@@ -69,50 +69,15 @@ class CustomerSerializer(serializers.ModelSerializer):
             "state",
             "state_name",
             "created_by",
-            "branch",        # ✅ FK ID
-            "branch_name",   # ✅ readable name
+            "branch",        # IDs → [2, 3]
+            "branch_names", # Names → ["Branch A", "Branch B"]
         ]
 
         read_only_fields = ["custom_id", "created_by"]
 
-    # =============================
-    # EMAIL VALIDATION
-    # =============================
-    def validate_email(self, value):
-        if value:
-            qs = Customer.objects.filter(email=value)
-            if self.instance:
-                qs = qs.exclude(id=self.instance.id)
+    def get_branch_names(self, obj):
+        return list(obj.branch.values_list("name", flat=True))
 
-            if qs.exists():
-                raise serializers.ValidationError(
-                    "A customer with this email already exists."
-                )
-        return value
-
-    # =============================
-    # MOBILE VALIDATION
-    # =============================
-    def validate_mobile_number1(self, value):
-        if len(value) != 10:
-            raise serializers.ValidationError(
-                "Mobile number must be exactly 10 digits long."
-            )
-        if not value.isdigit():
-            raise serializers.ValidationError(
-                "Mobile number must contain only digits."
-            )
-
-        qs = Customer.objects.filter(mobile_number1=value)
-        if self.instance:
-            qs = qs.exclude(id=self.instance.id)
-
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A customer with this mobile number already exists."
-            )
-
-        return value
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     login_identifier = serializers.CharField(write_only=True, required=True)

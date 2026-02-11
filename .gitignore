@@ -43,3 +43,6 @@ ecosystem.config.js
 .idea/
 # Embedded repo
 new_kickoff/
+# Python cache files
+__pycache__/
+*.pyc
