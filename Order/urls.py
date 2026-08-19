@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import DetailedOrderAPIView,CreateOrderAPIView,GetNextOrderNumberAPIView,OrderPaymentAPI,OrderPaymentDetails,OrderItemUpdateView,InvoiceList,InvoiceView,CustomerDetails,OrderByDeliveryDateAPIView,InvoiceReportAPI
+from .views import DetailedOrderAPIView,CreateOrderAPIView,GetNextOrderNumberAPIView,OrderPaymentAPI,OrderPaymentDetails,OrderItemUpdateView,InvoiceList,InvoiceView,CustomerDetails,OrderByDeliveryDateAPIView,InvoiceReportAPI,CanceledOrdersAPI
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -14,7 +14,9 @@ urlpatterns = [
     path('api/payment_details/<int:order_id>/',OrderPaymentDetails.as_view(),name='order_payment_details'),
     path('api/customer_details/<int:pk>/',CustomerDetails.as_view(),name="customer_details"),
     path('api/orders-by-date/', OrderByDeliveryDateAPIView.as_view(), name='orders-by-date'),
-    path('api/invoice_reports/',InvoiceReportAPI.as_view(),name='invoice_report'),  
+    path('api/invoice_reports/',InvoiceReportAPI.as_view(),name='invoice_report'),
+    path('api/canceledorders/<int:order_id>/',CanceledOrdersAPI.as_view(),name="cancel-orders")
+  
 
 
 ]

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView,DistrictList,ModelMaterialList,ItemCostView,StateList
+from .views import BranchView,login_view,BranchDetailView,UserView,UserDetailView,CustomerDetailAPIView,CustomerListCreateAPIView,MaterialListCreateAPIView,PrintTypeListCreateAPIView,MaterialDetailAPIView,PrintTypeDetailAPIView,ModelListCreateAPIView,ModelDetailAPIView,ItemView,ItemDetailedView,UserRoleListCreateAPIView,UserRoleDetailAPIView,MaterialDataListCreateAPIView,MaterialDataDetailAPIView,DistrictList,ModelMaterialList,ItemCostView,StateList,ItemStatusView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/print-types/<int:print_type_id>/', PrintTypeDetailAPIView.as_view(), name='print-type-detail'),
     path('api/api_item/',ItemView.as_view(),name='item_list'),
     path('api/api_item/<int:item_id>/',ItemDetailedView.as_view(),name='item_detailed_list'),
+    path('api/api_item/<int:item_id>/status/',ItemStatusView.as_view(),name='item_status'),
     path('api/itemcost/',ItemCostView.as_view(),name="item_cost")
     
     

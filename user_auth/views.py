@@ -492,6 +492,7 @@ class PrintTypeDetailAPIView(APIView):
         print_type.delete()
         return Response({"message": "Print Type deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 class ItemView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
         user = request.user
         branch_search = request.query_params.get('branch_search')
@@ -503,7 +504,7 @@ class ItemView(APIView):
 
         # Base queryset
         if user.role.name == "Admin":
-            items = Item.objects.filter().order_by('-created_at')
+            items = Item.objects.all().order_by('-created_at')
         else:
             items = Item.objects.filter(Q(created_by__branch=user.branch) |
                                         Q(branch=user.branch)
@@ -540,6 +541,7 @@ class ItemView(APIView):
                     "print_type": item.print_type.name if item.print_type else None,
                     "size": item.size,
                     "is_sleeve": item.is_sleeve,
+                    "is_active": item.is_active,
                 })
             return Response(item_list, status=status.HTTP_200_OK)
 
@@ -685,10 +687,25 @@ class ItemView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 class ItemDetailedView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_item(self, request, item_id):
+        """Return an active item that the requesting user is allowed to access."""
+        queryset = Item.objects.filter(is_active=True)
+        role_name = getattr(getattr(request.user, "role", None), "name", None)
+        if role_name != "Admin":
+            if request.user.branch_id is None:
+                raise PermissionDenied("Your user account is not assigned to a branch.")
+            queryset = queryset.filter(
+                Q(branch=request.user.branch) |
+                Q(created_by__branch=request.user.branch)
+            )
+        return get_object_or_404(queryset, id=item_id)
+
     def get(self, request, item_id=None):
         """Get a single item by ID or list all items if no ID is provided."""
         if item_id:
-            item = get_object_or_404(Item, id=item_id, is_active=True)
+            item = self.get_item(request, item_id)
             return Response({
                 "id": item.id,
                 "name": item.name if item.name else None,
@@ -712,15 +729,7 @@ class ItemDetailedView(APIView):
             }, status=status.HTTP_200_OK)
     def put(self, request, item_id):
         """Update an existing item."""
-        item = get_object_or_404(Item, id=item_id)
-        q_data=request.query_params.get('status')
-        if q_data == "status_updation":
-            is_active = request.data.get('is_active')
-            if is_active is not None:
-                item.is_active = bool(is_active)
-                item.save()
-                return Response({'message': 'Status updated successfully.'}, status=status.HTTP_200_OK)
-            return Response({'error': 'Missing is_active field.'}, status=status.HTTP_400_BAD_REQUEST)
+        item = self.get_item(request, item_id)
 
         try:
             # Extract updated fields
@@ -728,18 +737,22 @@ class ItemDetailedView(APIView):
             item_code = request.data.get("item_code", item.item_code)
             item_alert = request.data.get("item_alert", item.item_alert)
             size = request.data.get("size", item.size)
-            is_sleeve = request.data.get("is_sleeve", item.is_sleeve)
+            is_sleeve = request.data.get(
+                "is_sleeve", request.data.get("sleevecase", item.is_sleeve)
+            )
             item_description = request.data.get("item_description", item.item_description)
-            branch = request.data.get("branch")
-            if branch:
-                branch=Branch.objects.get(id=branch)
-                item.branch=branch
-            else:
-                branch=None
+            branch = item.branch
+            if "branch" in request.data:
+                role_name = getattr(getattr(request.user, "role", None), "name", None)
+                if role_name != "Admin":
+                    raise PermissionDenied("Only an Admin can move an item to another branch.")
+                branch_id = request.data.get("branch")
+                branch = Branch.objects.get(id=branch_id) if branch_id else None
 
             item_cost = item.item_cost
-            if "price" in request.data:
-                item_cost = Decimal(request.data["price"])
+            if "price" in request.data or "item_cost" in request.data:
+                price = request.data.get("price", request.data.get("item_cost"))
+                item_cost = Decimal(price)
 
             gst = item.gst
             if "gst" in request.data:
@@ -757,8 +770,6 @@ class ItemDetailedView(APIView):
             material = item.material
             if "material" in request.data:
                 material = Material.objects.get(id=request.data["material"]) if request.data["material"] else None
-            else:
-                material=None
             print_type = item.print_type
             if "printType" in request.data:
                 print_type = PrintType.objects.get(id=request.data["printType"]) if request.data["printType"] else None
@@ -821,12 +832,40 @@ class ItemDetailedView(APIView):
 
     def delete(self, request, item_id):
         """Soft delete an item (mark it as inactive)."""
-        item = get_object_or_404(Item, id=item_id, is_active=True)
+        item = self.get_item(request, item_id)
         item.is_active = False
         item.save()
 
         return Response({"message": "Item deleted successfully!"}, status=status.HTTP_204_NO_CONTENT)
-    
+
+
+class ItemStatusView(APIView):
+    """Change only an item's active status without touching catalog fields."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, item_id):
+        role_name = getattr(getattr(request.user, "role", None), "name", None)
+        if role_name != "Admin":
+            raise PermissionDenied("Only an Admin can change item status.")
+
+        if "is_active" not in request.data or not isinstance(request.data["is_active"], bool):
+            return Response(
+                {"error": "is_active must be a boolean."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item = get_object_or_404(Item.objects.all(), id=item_id)
+        item.is_active = request.data["is_active"]
+        item.save(update_fields=["is_active"])
+        return Response(
+            {
+                "message": "Item status updated successfully!",
+                "id": item.id,
+                "is_active": item.is_active,
+            },
+            status=status.HTTP_200_OK,
+        )
 class UserRoleListCreateAPIView(APIView):
     """
     Handle GET (list all roles) and POST (create new role).

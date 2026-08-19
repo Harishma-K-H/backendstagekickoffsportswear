@@ -248,7 +248,7 @@ class InvoiceList(APIView):
             'order', 'customer', 'created_by', 'created_by__branch'
         ).prefetch_related(
             Prefetch('invoice_items', queryset=InvoiceItem.objects.select_related('item__model', 'item__material', 'item__print_type', 'item'))
-        )
+        ).exclude(order__status='Canceled')
 
         if user.role.name != "Admin":
             invoices = invoices.filter(created_by__branch__id=user.branch.id)
@@ -471,10 +471,13 @@ class CreateOrderAPIView(APIView):
         if user.role.name == "Admin":
             return Orderdata.objects.select_related(
                 'created_by__branch'
-            ).all().order_by('-id')
+            ).exclude(status='Canceled').order_by('-id')
+
         return Orderdata.objects.select_related(
             'created_by__branch'
-        ).filter(created_by__branch__id=user.branch.id).order_by('-id')
+        ).filter(
+            created_by__branch__id=user.branch.id
+        ).exclude(status='Canceled').order_by('-id')
 
     def get(self, request, order_id=None):
         user = request.user
@@ -733,31 +736,46 @@ class DetailedOrderAPIView (APIView):
             
     # parser_classes = (MultiPartParser, FormParser)  # Supports file uploads
 class OrderItemUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+    def clean_id(self, value):
+        if value in [None, '', 'null', 'undefined']:
+            return None
+        return value
+
     def put(self, request, *args, **kwargs):
         print("📌 Update Request Data:", request.data)
-        q_data=request.query_params.get('data')
+
+        q_data = request.query_params.get('data')
+
+        # ================== INVOICE GENERATION ==================
         if q_data == "generated":
-            order_id = request.data.get('orderID')
+            order_id = self.clean_id(request.data.get('orderID'))
+
             if not order_id:
                 return Response({"error": "Order ID is required"}, status=400)
 
-            order = get_object_or_404(Orderdata, id=order_id)
+            orders = Orderdata.objects.all()
+            role_name = getattr(getattr(request.user, "role", None), "name", None)
+            if role_name != "Admin":
+                if request.user.branch_id is None:
+                    raise PermissionDenied("Your user account is not assigned to a branch.")
+                orders = orders.filter(created_by__branch=request.user.branch)
+            order = get_object_or_404(orders, id=order_id)
 
             order_invoice = request.data.get("order_invoice")
             order.order_invoice_sent_date = timezone.now()
             order.order_invoice = order_invoice
-            # ✅ Use existing invoice_id or generate a new one
+
             if order.invoice_id:
                 invoice_id = order.invoice_id
             else:
                 invoice_id = generate_invoice_id(request.user)
-                
                 order.invoice_id = invoice_id
 
             order.save()
 
-            # ✅ Avoid duplicate invoice creation
             invoice = Invoice.objects.filter(invoice_id=invoice_id).first()
+
             if not invoice:
                 invoice = Invoice.objects.create(
                     invoice_id=invoice_id,
@@ -780,20 +798,20 @@ class OrderItemUpdateView(APIView):
                         qty=order_item.qty,
                         sleeve_case=order_item.sleeve_case
                     )
-                    print(f"✅ InvoiceItem created for OrderItem ID: {order_item.id}")
-            else:
-                print(f"⚠️ Invoice with ID {invoice_id} already exists. Skipping creation.")
 
-            return Response({'message': "Order Invoice processed successfully"}, status=status.HTTP_200_OK)
+            return Response({'message': "Order Invoice processed successfully"}, status=200)
+
+        # ================== ORDER UPDATE ==================
         try:
-            order_id = request.data.get('orderID')
+            order_id = self.clean_id(request.data.get('orderID'))
+
             if not order_id:
                 return Response({"error": "Order ID is required"}, status=400)
 
             order = get_object_or_404(Orderdata, id=order_id)
 
             delivery_date = request.data.get('delivery_date')
-            customer_id = request.data.get('customer')
+            customer_id = self.clean_id(request.data.get('customer'))
             net_cost = request.data.get('net_cost')
             order_discount = request.data.get('discount')
             remarks = request.data.get('remarks')
@@ -801,35 +819,51 @@ class OrderItemUpdateView(APIView):
             if customer_id:
                 customer = get_object_or_404(Customer, id=customer_id)
                 order.customer = customer
+
             if delivery_date:
                 order.delivery_date = delivery_date
+
             if order_discount is not None:
                 try:
                     order.discount = Decimal(order_discount)
-                except InvalidOperation:
-                    return Response({"error": "Invalid discount value."}, status=400)
+                except:
+                    return Response({"error": "Invalid discount"}, status=400)
+
             if remarks:
                 order.remarks = remarks
 
+            # ===== COST CALCULATION =====
             refund_message = None
-            total_cost = None
             GST_PERCENTAGE = getattr(settings, 'GST_PERCENTAGE', 5)
 
-            if net_cost:
-                try:
-                    net_cost_decimal = Decimal(net_cost)
-                    gst_value = (Decimal(GST_PERCENTAGE) / 100) * net_cost_decimal
-                    order.gst = gst_value
-                    total_cost = net_cost_decimal + gst_value
-                    total_cost = total_cost.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
-                except InvalidOperation:
-                    return Response({"error": "Invalid net cost value."}, status=400)
+            if net_cost is not None:
+                net_cost_decimal = Decimal(str(net_cost))
+
+                gst_value = (
+                    Decimal(str(GST_PERCENTAGE)) / Decimal('100')
+                ) * net_cost_decimal
+
+                gst_value = gst_value.quantize(
+                    Decimal('0.01'),
+                    rounding=ROUND_HALF_UP
+                )
+
+                total_cost = (
+                    net_cost_decimal + gst_value
+                ).quantize(
+                    Decimal('0.01'),
+                    rounding=ROUND_HALF_UP
+                )
 
                 paid_qs = OrderPayment.objects.filter(order_id=order)
-                total_paid = sum(Decimal(p.paid_amount or '0') for p in paid_qs)
+                total_paid = sum(
+                    Decimal(p.paid_amount or '0')
+                    for p in paid_qs
+                )
 
                 if total_paid > total_cost:
                     excess_amount = total_paid - total_cost
+
                     OrderPayment.objects.create(
                         order_id=order,
                         customer=order.customer,
@@ -840,15 +874,19 @@ class OrderItemUpdateView(APIView):
                         refund_amount=str(excess_amount),
                         created_by=request.user
                     )
-                    refund_message = f"Customer overpaid by ₹{excess_amount}. Please refund this amount."
 
+                    refund_message = f"Overpaid ₹{excess_amount}"
+
+                # ✅ IMPORTANT
+                order.net_cost = net_cost_decimal
+                order.gst = gst_value
                 order.total_cost = total_cost
-                order.net_cost = net_cost
 
             order.save()
 
-            # ✅ Update the main Invoice if exists
+            # ===== UPDATE INVOICE =====
             invoice = Invoice.objects.filter(order=order).first()
+
             if invoice:
                 invoice.total_cost = order.total_cost
                 invoice.discount = order.discount
@@ -856,87 +894,56 @@ class OrderItemUpdateView(APIView):
                 invoice.net_cost = order.net_cost
                 invoice.delivery_date = order.delivery_date
                 invoice.customer = order.customer
-                invoice.logo = order.logo
-                invoice.front_matter = order.front_matter
-                invoice.front_img = order.front_img
-                invoice.back_matter = order.back_matter
-                invoice.back_img = order.back_img
                 invoice.save()
 
-            # ✅ Delete removed items
+            # ===== DELETE ITEMS =====
             deleted_item_ids = request.data.get('deleted_item_ids', [])
 
             if isinstance(deleted_item_ids, str):
                 try:
                     deleted_item_ids = json.loads(deleted_item_ids)
-                except Exception:
+                except:
                     deleted_item_ids = []
 
-            print("🧾 Deleted Item IDs:", deleted_item_ids)
-
             for order_item_id in deleted_item_ids:
-                try:
-                    order_item = OrderItem.objects.filter(id=order_item_id, order=order).first()
-                    if order_item:
-                        print(f"🗑️ Deleting OrderItem ID: {order_item_id}")
+                order_item_id = self.clean_id(order_item_id)
 
-                        invoice_items = InvoiceItem.objects.filter(order_item=order_item)
-                        print(f"📋 Found {invoice_items.count()} InvoiceItems for OrderItem {order_item_id}")
-                        
-                        for invoice_item in invoice_items:
-                            print(f"➡️ InvoiceItem ID: {invoice_item.id}")
-                            invoice_item.delete()
+                if not order_item_id:
+                    continue
 
-                        order_item.delete()
-                    else:
-                        print(f"⚠️ OrderItem not found for ID: {order_item_id}")
-                except Exception as e:
-                    print(f"❌ Error deleting OrderItem {order_item_id}: {e}")
+                order_item = OrderItem.objects.filter(id=order_item_id, order=order).first()
 
-            # deleted_item_ids = request.data.get('deleted_item_ids', [])
-            # if not isinstance(deleted_item_ids, list):
-            #     try:
-            #         deleted_item_ids = json.loads(deleted_item_ids)
-            #     except Exception:
-            #         deleted_item_ids = []
+                if order_item:
+                    InvoiceItem.objects.filter(order_item=order_item).delete()
+                    order_item.delete()
 
-            # for order_item_id in deleted_item_ids:
-            #     order_item = OrderItem.objects.filter(id=order_item_id, order=order).first()
-            #     if order_item:
-            #         InvoiceItem.objects.filter(order_item=order_item).delete()
-            #         order_item.delete()
-
-            # ✅ Process items
+            # ===== PROCESS ITEMS =====
             index = 0
+
             while f'items[{index}][name]' in request.data:
-                order_item_id = request.data.get(f'items[{index}][item_id]')
+
+                order_item_id = self.clean_id(request.data.get(f'items[{index}][item_id]'))
                 item_name = request.data.get(f'items[{index}][name]')
-                model_id = request.data.get(f'items[{index}][model]')
-                material_id = request.data.get(f'items[{index}][material]')
-                print_type_id = request.data.get(f'items[{index}][print_type]')
+
+                model_id = self.clean_id(request.data.get(f'items[{index}][model]'))
+                material_id = self.clean_id(request.data.get(f'items[{index}][material]'))
+                print_type_id = self.clean_id(request.data.get(f'items[{index}][print_type]'))
+
                 size = request.data.get(f'items[{index}][size]')
                 qty = request.data.get(f'items[{index}][qty]')
                 sleeve_case = request.data.get(f'items[{index}][sleeve_case]')
                 total_item_cost = request.data.get(f'items[{index}][total_item_cost]')
                 discount = request.data.get(f'items[{index}][discount]')
 
-                model = get_object_or_404(Model_data, id=model_id) if model_id else None
-                material = get_object_or_404(Material, id=material_id) if material_id else None
-                print_type = get_object_or_404(PrintType, id=print_type_id) if print_type_id else None
+                # ✅ SAFE FETCH (NO CRASH)
+                model = Model_data.objects.filter(id=model_id).first() if model_id else None
+                material = Material.objects.filter(id=material_id).first() if material_id else None
+                print_type = PrintType.objects.filter(id=print_type_id).first() if print_type_id else None
 
-                order_item = (
-                    OrderItem.objects.filter(id=order_item_id, order=order).first()
-                    if order_item_id not in [None, '', 'null']
-                    else None
-                )
+                order_item = OrderItem.objects.filter(id=order_item_id, order=order).first() if order_item_id else None
 
+                # ===== UPDATE EXISTING =====
                 if order_item:
-                    item = order_item.item
-                    item.name = item_name
-                    item.model = model
-                    item.material = material
-                    item.print_type = print_type
-                    item.save()
 
                     order_item.size = size
                     order_item.qty = qty
@@ -945,26 +952,37 @@ class OrderItemUpdateView(APIView):
                     order_item.total_item_cost = total_item_cost
                     order_item.save()
 
-                    invoice_item = InvoiceItem.objects.filter(order_item=order_item).first()
+                    # Update InvoiceItem values only
+                    invoice_item = InvoiceItem.objects.filter(
+                        order_item=order_item
+                    ).first()
+
                     if invoice_item:
-                        invoice_item.item = item
                         invoice_item.size = size
                         invoice_item.qty = qty
                         invoice_item.discount = discount
                         invoice_item.sleeve_case = sleeve_case
                         invoice_item.total_item_cost = total_item_cost
                         invoice_item.save()
+
+                # ===== CREATE NEW =====
                 else:
-                    new_item = Item.objects.filter(
-                        model=model,
-                        material=material,
-                        is_sleeve=sleeve_case,
-                        print_type=print_type,
-                        branch=request.user.branch
-                    ).first()
+                    filters = {
+                        "model": model,
+                        "is_sleeve": sleeve_case,
+                        "branch": request.user.branch
+                    }
+
+                    if material:
+                        filters["material"] = material
+
+                    if print_type:
+                        filters["print_type"] = print_type
+
+                    new_item = Item.objects.filter(**filters).first()
 
                     if not new_item:
-                        return Response({"error": "No matching Item found for creation"}, status=400)
+                        return Response({"error": f"No matching Item for index {index}"}, status=400)
 
                     new_order_item = OrderItem.objects.create(
                         order=order,
@@ -977,7 +995,6 @@ class OrderItemUpdateView(APIView):
                         created_at=now()
                     )
 
-                    # ✅ Add InvoiceItem if invoice exists
                     if invoice:
                         InvoiceItem.objects.create(
                             invoice=invoice,
@@ -993,8 +1010,8 @@ class OrderItemUpdateView(APIView):
                 index += 1
 
             return Response({
-                "message": "Order and invoice items updated successfully.",
-                "refund_alert": refund_message,
+                "message": "Order updated successfully",
+                "refund_alert": refund_message
             })
 
         except Exception as e:
@@ -1257,3 +1274,35 @@ class InvoiceReportAPI(APIView):
             enriched_data.append(invoice)
 
         return paginator.get_paginated_response(enriched_data)
+class CanceledOrdersAPI(APIView):
+
+    def put(self, request, order_id):
+        try:
+            order = get_object_or_404(Orderdata, id=order_id)
+
+            # Already canceled check
+            if order.status == "Canceled":
+                return Response({
+                    "message": "Order already canceled"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Update status
+            order.status = "Canceled"
+
+            # Optional: save remarks from request
+            remarks = request.data.get("remarks")
+            if remarks:
+                order.remarks = remarks
+
+            order.save()
+
+            return Response({
+                "message": "Order canceled successfully",
+                "order_id": order.id,
+                "status": order.status
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                "error": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

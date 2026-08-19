@@ -5,8 +5,16 @@ __pycache__/
 
 # Virtual environment
 venv/
+venv_server_backup/
+
+# Environment files
 .env
 .env.*
+
+# Backup files
+*.backup-*
+*.bak
+*.backup
 
 # Django
 db.sqlite3
@@ -15,14 +23,12 @@ staticfiles/
 
 # Logs
 logs/
-
-# Migrations cache
-**/migrations/__pycache__/
-
-# System files
 *.log
 *.pid
 *.save
+
+# Migrations cache
+**/migrations/__pycache__/
 
 # Database backups
 *.sql
@@ -41,5 +47,6 @@ ecosystem.config.js
 # IDE
 .vscode/
 .idea/
+
 # Embedded repo
 new_kickoff/
